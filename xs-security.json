@@ -1,0 +1,41 @@
+{
+  "xsappname": "orderbasedplanning",
+  "tenant-mode": "dedicated",
+  "description": "Security profile of order based planning application",
+  "scopes": [
+    {
+      "name": "uaa.user",
+      "description": "UAA"
+    },
+    {
+      "name": "$XSAPPNAME.User",
+      "description": "General user access"
+    },
+    {
+      "name": "$XSAPPNAME.read",
+      "description": "Read authorization"
+    },
+    {
+      "name": "$XSAPPNAME.admin",
+      "description": "Admin authorization"
+    }
+  ],
+  "role-templates": [
+    {
+      "name": "VCPUserRole",
+      "description": "UAA VCPUserRole",
+      "scope-references": [
+        "$XSAPPNAME.User"
+      ]
+    }
+  ],
+  "oauth2-configuration": {
+    "token-validity": 3600,
+    "redirect-uris": [
+      "https://*.hana.ondemand.com/**",
+      "https://*.applicationstudio.cloud.sap/**"
+    ]
+  },
+  "attributes": [],
+  "authorities-inheritance": false
+}

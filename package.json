@@ -1,0 +1,57 @@
+{
+  "name": "OrderBasedPlanning",
+  "version": "1.0.0",
+  "description": "A simple CAP project.",
+  "dependencies": {
+    "@cap-js/hana": "^2",
+    "@sap/cds": "^9",
+    "@sap/hana-client": "^2.27.24",
+    "@sap/xssec": "^4",
+    "body-parser": "^2.2.2",
+    "compression": "^1.8.1",
+    "cors": "^2.8.6",
+    "express": "^4",
+    "moment": "^2.30.1",
+    "sqlite3": "^5.1.7",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@cap-js/sqlite": "^2",
+    "@sap/cds-dk": "^9.8.0",
+    "cds-plugin-ui5": "^0.13.0",
+    "mbt": "^1.2.29",
+    "rimraf": "^5.0.5"
+  },
+  "scripts": {
+    "start": "cds-serve",
+    "watch-orderbasedplanning": "cds watch --open obp.orderbasedplanning/index.html?sap-ui-xx-viewCache=false --livereload false",
+    "undeploy": "cf undeploy OrderBasedPlanning --delete-services --delete-service-keys --delete-service-brokers",
+    "build": "rimraf resources mta_archives && mbt build --mtar archive",
+    "deploy": "cf deploy mta_archives/archive.mtar --retries 1"
+  },
+  "private": true,
+  "cds": {
+    "requires": {
+      "[production]": {
+        "auth": "xsuaa"
+      },
+      "connectivity": true,
+      "destinations": true,
+      "html5-repo": true,
+      "db": {
+        "[development]": {
+          "kind": "sqlite",
+          "credentials": {
+            "url": "planning.db"
+          }
+        },
+        "[production]": {
+          "kind": "hana"
+        }
+      }
+    }
+  },
+  "workspaces": [
+    "app/*"
+  ]
+}

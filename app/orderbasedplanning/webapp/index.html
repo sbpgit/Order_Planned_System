@@ -1,0 +1,1598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Order Planning System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f14;
+    --bg2: #13161d;
+    --bg3: #1a1e28;
+    --bg4: #22273a;
+    --border: #2a3048;
+    --text: #e2e8f0;
+    --text2: #94a3b8;
+    --text3: #64748b;
+    --accent: #3b82f6;
+    --accent2: #60a5fa;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --orange: #f97316;
+    --purple: #a855f7;
+    --cyan: #06b6d4;
+    --font: 'IBM Plex Sans', sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ---- Layout ---- */
+  #app { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 240px; min-height: 100vh; background: var(--bg2);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column;
+    position: fixed; left: 0; top: 0; bottom: 0; z-index: 100;
+  }
+
+  .sidebar-logo {
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-logo .logo-icon { font-size: 28px; margin-bottom: 4px; }
+  .sidebar-logo .logo-title {
+    font-size: 13px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent2);
+  }
+  .sidebar-logo .logo-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+  .sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
+  .nav-group-label {
+    padding: 8px 16px 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text3);
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 16px; cursor: pointer; font-size: 13.5px;
+    color: var(--text2); transition: all 0.15s; border-left: 2px solid transparent;
+    user-select: none;
+  }
+  .nav-item:hover { background: var(--bg3); color: var(--text); }
+  .nav-item.active { background: rgba(59,130,246,0.12); color: var(--accent2); border-left-color: var(--accent); }
+  .nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  .sidebar-footer { padding: 16px; border-top: 1px solid var(--border); }
+  .sidebar-footer .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-right: 6px; }
+  .sidebar-footer span { font-size: 12px; color: var(--text3); }
+
+  .main { margin-left: 240px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
+
+  .topbar {
+    height: 56px; background: var(--bg2); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 28px; position: sticky; top: 0; z-index: 50;
+  }
+  .topbar-title { font-size: 15px; font-weight: 600; color: var(--text); }
+  .topbar-actions { display: flex; gap: 8px; align-items: center; }
+
+  .content { padding: 28px; flex: 1; }
+
+  /* ---- Buttons ---- */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+    cursor: pointer; border: none; transition: all 0.15s; font-family: var(--font);
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-secondary { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--bg4); color: var(--text); }
+  .btn-danger { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+  .btn-danger:hover { background: rgba(239,68,68,0.25); }
+  .btn-success { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+  .btn-success:hover { background: rgba(34,197,94,0.25); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ---- Cards ---- */
+  .card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+  }
+  .card-header {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .card-title { font-size: 14px; font-weight: 600; color: var(--text); }
+  .card-body { padding: 20px; }
+
+  /* ---- KPI Grid ---- */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px; position: relative; overflow: hidden;
+  }
+  .kpi-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  }
+  .kpi-card.blue::before { background: var(--accent); }
+  .kpi-card.green::before { background: var(--green); }
+  .kpi-card.yellow::before { background: var(--yellow); }
+  .kpi-card.red::before { background: var(--red); }
+  .kpi-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); margin-bottom: 8px; }
+  .kpi-value { font-size: 32px; font-weight: 700; font-family: var(--mono); line-height: 1; }
+  .kpi-card.blue .kpi-value { color: var(--accent2); }
+  .kpi-card.green .kpi-value { color: var(--green); }
+  .kpi-card.yellow .kpi-value { color: var(--yellow); }
+  .kpi-card.red .kpi-value { color: var(--red); }
+  .kpi-sub { font-size: 12px; color: var(--text3); margin-top: 6px; }
+
+  /* ---- Tables ---- */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    padding: 10px 14px; text-align: left;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text3); border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.1s; }
+  tbody tr:hover { background: rgba(255,255,255,0.03); }
+  tbody td { padding: 11px 14px; color: var(--text2); vertical-align: middle; }
+  tbody td.primary { color: var(--text); font-weight: 500; }
+  .mono { font-family: var(--mono); font-size: 12px; }
+
+  /* ---- Badges ---- */
+  .badge {
+    display: inline-flex; align-items: center; padding: 2px 8px;
+    border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  }
+  .badge-high { background: rgba(239,68,68,0.15); color: #fca5a5; }
+  .badge-medium { background: rgba(245,158,11,0.15); color: #fcd34d; }
+  .badge-low { background: rgba(100,116,139,0.15); color: #94a3b8; }
+  .badge-open { background: rgba(59,130,246,0.15); color: var(--accent2); }
+  .badge-confirmed { background: rgba(34,197,94,0.15); color: #86efac; }
+  .badge-critical { background: rgba(239,68,68,0.2); color: #fca5a5; }
+  .badge-warning { background: rgba(245,158,11,0.2); color: #fcd34d; }
+  .badge-ok { background: rgba(34,197,94,0.15); color: #86efac; }
+  .badge-ontime { background: rgba(34,197,94,0.15); color: #86efac; }
+  .badge-delayed { background: rgba(245,158,11,0.15); color: #fcd34d; }
+
+  /* ---- Forms ---- */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group.full { grid-column: 1 / -1; }
+  label { font-size: 12px; font-weight: 600; color: var(--text2); letter-spacing: 0.04em; text-transform: uppercase; }
+  input, select, textarea {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 9px 12px; color: var(--text); font-size: 13.5px;
+    font-family: var(--font); outline: none; transition: border-color 0.15s;
+    width: 100%;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  textarea { min-height: 80px; resize: vertical; }
+  select option { background: var(--bg3); }
+
+  /* ---- Modals ---- */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 1000;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: auto; }
+  .modal {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+    width: 100%; max-width: 680px; max-height: 90vh; overflow-y: auto;
+    transform: translateY(20px); transition: transform 0.2s;
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-lg { max-width: 900px; }
+  .modal-header {
+    padding: 20px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .modal-title { font-size: 16px; font-weight: 700; }
+  .modal-close { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 20px; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+  .modal-close:hover { background: var(--bg3); color: var(--text); }
+  .modal-body { padding: 24px; }
+  .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* ---- Progress ---- */
+  .progress-bar { height: 6px; background: var(--bg4); border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .progress-fill.green { background: var(--green); }
+  .progress-fill.yellow { background: var(--yellow); }
+  .progress-fill.red { background: var(--red); }
+
+  /* ---- Tabs ---- */
+  .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; gap: 4px; }
+  .tab {
+    padding: 9px 16px; font-size: 13px; font-weight: 500; cursor: pointer;
+    color: var(--text3); border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+  .tab:hover { color: var(--text2); }
+  .tab.active { color: var(--accent2); border-bottom-color: var(--accent); }
+
+  /* ---- Section headers ---- */
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .section-title { font-size: 18px; font-weight: 700; }
+  .section-sub { font-size: 13px; color: var(--text3); margin-top: 2px; }
+
+  /* ---- Alert / Toast ---- */
+  #toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 16px; font-size: 13px; color: var(--text);
+    animation: slideIn 0.2s ease; max-width: 340px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .toast.success { border-left: 3px solid var(--green); }
+  .toast.error { border-left: 3px solid var(--red); }
+  .toast.info { border-left: 3px solid var(--accent); }
+  @keyframes slideIn { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  /* ---- Optimization result specific ---- */
+  .result-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .result-metric { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; }
+  .result-metric .val { font-size: 28px; font-weight: 700; font-family: var(--mono); }
+  .result-metric .lbl { font-size: 11px; color: var(--text3); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+  /* ---- Loading spinner ---- */
+  .spinner {
+    width: 20px; height: 20px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.7s linear infinite; display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---- Utility ---- */
+  .flex { display: flex; }
+  .flex-col { display: flex; flex-direction: column; }
+  .gap-2 { gap: 8px; }
+  .gap-3 { gap: 12px; }
+  .gap-4 { gap: 16px; }
+  .items-center { align-items: center; }
+  .justify-between { justify-content: space-between; }
+  .mb-4 { margin-bottom: 16px; }
+  .mb-6 { margin-bottom: 24px; }
+  .mt-4 { margin-top: 16px; }
+  .text-sm { font-size: 13px; }
+  .text-xs { font-size: 11px; }
+  .text-muted { color: var(--text3); }
+  .text-green { color: var(--green); }
+  .text-red { color: var(--red); }
+  .text-yellow { color: var(--yellow); }
+  .text-accent { color: var(--accent2); }
+  .font-mono { font-family: var(--mono); }
+  .w-full { width: 100%; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
+  .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
+  .divider { height: 1px; background: var(--border); margin: 20px 0; }
+  .col-span-2 { grid-column: span 2; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🏗️</div>
+      <div class="logo-title">Order Planning</div>
+      <div class="logo-sub">Forklift Manufacturing</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-group-label">Overview</div>
+      <div class="nav-item active" onclick="navigate('dashboard')">
+        <span class="nav-icon">📊</span> Dashboard
+      </div>
+      <div class="nav-group-label">Master Data</div>
+      <div class="nav-item" onclick="navigate('products')">
+        <span class="nav-icon">🏭</span> Products
+      </div>
+      <div class="nav-item" onclick="navigate('customers')">
+        <span class="nav-icon">👥</span> Customers
+      </div>
+      <div class="nav-item" onclick="navigate('restrictions')">
+        <span class="nav-icon">⚙️</span> Restrictions
+      </div>
+      <div class="nav-item" onclick="navigate('components')">
+        <span class="nav-icon">🔩</span> Components
+      </div>
+      <div class="nav-item" onclick="navigate('penalties')">
+        <span class="nav-icon">💰</span> Penalty Rules
+      </div>
+      <div class="nav-group-label">Orders</div>
+      <div class="nav-item" onclick="navigate('orders')">
+        <span class="nav-icon">📋</span> Sales Orders
+      </div>
+      <div class="nav-group-label">Planning</div>
+      <div class="nav-item" onclick="navigate('optimize')">
+        <span class="nav-icon">🧬</span> Run Optimization
+      </div>
+      <div class="nav-item" onclick="navigate('results')">
+        <span class="nav-icon">📈</span> Results History
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <span class="status-dot"></span>
+      <span>System Online · SAP BTP</span>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="topbar-title">Dashboard</div>
+      <div class="topbar-actions">
+        <button class="btn btn-secondary btn-sm" onclick="Pages.seed()">🌱 Load Sample Data</button>
+        <button class="btn btn-primary btn-sm" onclick="navigate('optimize')">🧬 Run Optimization</button>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- ===== DASHBOARD ===== -->
+      <div id="page-dashboard" class="page active">
+        <div class="section-header">
+          <div>
+            <div class="section-title">System Dashboard</div>
+            <div class="section-sub">Real-time overview of planning system</div>
+          </div>
+          <button class="btn btn-secondary" onclick="Pages.dashboard()">↻ Refresh</button>
+        </div>
+        <div class="kpi-grid" id="kpi-grid">
+          <div class="kpi-card blue"><div class="kpi-label">Sales Orders</div><div class="kpi-value" id="kpi-orders">—</div><div class="kpi-sub" id="kpi-orders-sub">Loading...</div></div>
+          <div class="kpi-card yellow"><div class="kpi-label">Open Orders</div><div class="kpi-value" id="kpi-open">—</div><div class="kpi-sub" id="kpi-overdue">Loading...</div></div>
+          <div class="kpi-card green"><div class="kpi-label">Products</div><div class="kpi-value" id="kpi-products">—</div><div class="kpi-sub" id="kpi-customers">Loading...</div></div>
+          <div class="kpi-card red"><div class="kpi-label">Last Run</div><div class="kpi-value" id="kpi-lastrun" style="font-size:14px;padding-top:8px">—</div><div class="kpi-sub" id="kpi-lastrun-sub">—</div></div>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <div class="card-header"><div class="card-title">⚙️ Capacity Status</div></div>
+            <div class="card-body" id="dash-capacity">Loading...</div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">🔩 Component Status</div></div>
+            <div class="card-body" id="dash-components">Loading...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== PRODUCTS ===== -->
+      <div id="page-products" class="page">
+        <div class="section-header">
+          <div><div class="section-title">Products</div><div class="section-sub">Forklift product catalog</div></div>
+          <button class="btn btn-primary" onclick="openModal('modal-product')">+ Add Product</button>
+        </div>
+        <div class="card">
+          <div class="card-body" style="padding:0">
+            <div class="table-wrap">
+              <table id="table-products">
+                <thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Unit Price</th><th>Std Cost</th><th>Lead Days</th><th>Actions</th></tr></thead>
+                <tbody id="tbody-products"><tr><td colspan="7" class="text-muted" style="text-align:center;padding:40px">Loading...</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== CUSTOMERS ===== -->
+      <div id="page-customers" class="page">
+        <div class="section-header">
+          <div><div class="section-title">Customers</div><div class="section-sub">Customer master data</div></div>
+          <button class="btn btn-primary" onclick="openModal('modal-customer')">+ Add Customer</button>
+        </div>
+        <div class="card">
+          <div class="card-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Code</th><th>Name</th><th>Priority</th><th>Contact</th><th>Email</th><th>Actions</th></tr></thead>
+                <tbody id="tbody-customers"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== RESTRICTIONS ===== -->
+      <div id="page-restrictions" class="page">
+        <div class="section-header">
+          <div><div class="section-title">Restrictions</div><div class="section-sub">Production capacity constraints</div></div>
+          <button class="btn btn-primary" onclick="openModal('modal-restriction')">+ Add Restriction</button>
+        </div>
+        <div id="restrictions-list"></div>
+      </div>
+
+      <!-- ===== COMPONENTS ===== -->
+      <div id="page-components" class="page">
+        <div class="section-header">
+          <div><div class="section-title">Components</div><div class="section-sub">Component inventory & availability</div></div>
+          <button class="btn btn-primary" onclick="openModal('modal-component')">+ Add Component</button>
+        </div>
+        <div id="components-list"></div>
+      </div>
+
+      <!-- ===== PENALTY RULES ===== -->
+      <div id="page-penalties" class="page">
+        <div class="section-header">
+          <div><div class="section-title">Penalty Rules</div><div class="section-sub">Late delivery & no-fulfillment penalties</div></div>
+          <button class="btn btn-primary" onclick="openModal('modal-penalty')">+ Add Rule</button>
+        </div>
+        <div class="card">
+          <div class="card-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Type</th><th>Customer Priority</th><th>Product</th><th>Penalty/Day</th><th>Flat Penalty</th><th>Actions</th></tr></thead>
+                <tbody id="tbody-penalties"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== SALES ORDERS ===== -->
+      <div id="page-orders" class="page">
+        <div class="section-header">
+          <div><div class="section-title">Sales Orders</div><div class="section-sub">Open and confirmed orders</div></div>
+          <button class="btn btn-primary" onclick="openModal('modal-order')">+ New Order</button>
+        </div>
+        <div class="card">
+          <div class="card-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Order #</th><th>Customer</th><th>Product</th><th>Promise Date</th><th>Qty</th><th>Revenue</th><th>Priority</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="tbody-orders"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== OPTIMIZE ===== -->
+      <div id="page-optimize" class="page">
+        <div class="section-header">
+          <div><div class="section-title">🧬 Genetic Algorithm Optimizer</div><div class="section-sub">Minimize penalty costs for open sales orders</div></div>
+        </div>
+        <div class="two-col" style="margin-bottom:24px">
+          <div class="card">
+            <div class="card-header"><div class="card-title">⚙️ Parameters</div></div>
+            <div class="card-body">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Description</label>
+                  <input type="text" id="opt-desc" value="Planning Run" placeholder="Optimization description">
+                </div>
+                <div class="form-group">
+                  <label>Population Size</label>
+                  <input type="number" id="opt-pop" value="60" min="10" max="200">
+                </div>
+                <div class="form-group">
+                  <label>Generations</label>
+                  <input type="number" id="opt-gen" value="120" min="10" max="500">
+                </div>
+                <div class="form-group">
+                  <label>Mutation Rate</label>
+                  <input type="number" id="opt-mut" value="0.1" step="0.01" min="0" max="1">
+                </div>
+                <div class="form-group">
+                  <label>Crossover Rate</label>
+                  <input type="number" id="opt-cross" value="0.8" step="0.01" min="0" max="1">
+                </div>
+              </div>
+              <div class="divider"></div>
+              <div style="background:var(--bg3);padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:16px">
+                <div class="text-xs text-muted" style="margin-bottom:6px">ALGORITHM INFO</div>
+                <div class="text-sm">The genetic algorithm evaluates <strong>all open sales orders</strong> and finds optimal confirmation dates that minimize:</div>
+                <ul style="margin-top:8px;margin-left:16px;color:var(--text2);font-size:13px;line-height:1.8">
+                  <li>Late delivery penalties (by customer priority)</li>
+                  <li>Capacity restriction violations</li>
+                  <li>Component shortage penalties</li>
+                </ul>
+              </div>
+              <button class="btn btn-primary w-full" id="btn-run-opt" onclick="runOptimization()">
+                <span>🧬</span> Run Optimization
+              </button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">📊 Progress</div></div>
+            <div class="card-body" id="opt-progress">
+              <div class="empty-state">
+                <div class="empty-icon">🧬</div>
+                <div>Configure parameters and click<br><strong>Run Optimization</strong> to start</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="opt-results-section" style="display:none">
+          <div class="section-header">
+            <div class="section-title">📈 Optimization Results</div>
+          </div>
+          <div id="opt-results-content"></div>
+        </div>
+      </div>
+
+      <!-- ===== RESULTS HISTORY ===== -->
+      <div id="page-results" class="page">
+        <div class="section-header">
+          <div><div class="section-title">Optimization History</div><div class="section-sub">Past planning runs</div></div>
+          <button class="btn btn-secondary" onclick="Pages.results()">↻ Refresh</button>
+        </div>
+        <div class="card">
+          <div class="card-body" style="padding:0">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Run #</th><th>Description</th><th>Date</th><th>Orders</th><th>On-Time %</th><th>Total Penalty</th><th>Exec Time</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="tbody-results"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </main>
+</div><!-- /app -->
+
+<!-- ===== MODALS ===== -->
+
+<!-- Product Modal -->
+<div class="modal-overlay" id="modal-product">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Product</div>
+      <button class="modal-close" onclick="closeModal('modal-product')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="prod-id">
+      <div class="form-grid">
+        <div class="form-group"><label>Product Code *</label><input id="prod-code" placeholder="FL-E2T"></div>
+        <div class="form-group"><label>Name *</label><input id="prod-name" placeholder="Electric Forklift 2T"></div>
+        <div class="form-group full"><label>Description</label><textarea id="prod-desc"></textarea></div>
+        <div class="form-group"><label>Category</label><input id="prod-cat" placeholder="Electric Forklifts"></div>
+        <div class="form-group"><label>Unit Price ($)</label><input id="prod-price" type="number" step="100"></div>
+        <div class="form-group"><label>Standard Cost ($)</label><input id="prod-cost" type="number" step="100"></div>
+        <div class="form-group"><label>Lead Time (days)</label><input id="prod-lead" type="number" min="0"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-product')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveProduct()">Save Product</button>
+    </div>
+  </div>
+</div>
+
+<!-- Customer Modal -->
+<div class="modal-overlay" id="modal-customer">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Customer</div>
+      <button class="modal-close" onclick="closeModal('modal-customer')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cust-id">
+      <div class="form-grid">
+        <div class="form-group"><label>Customer Code *</label><input id="cust-code" placeholder="CUST001"></div>
+        <div class="form-group"><label>Name *</label><input id="cust-name"></div>
+        <div class="form-group"><label>Priority</label>
+          <select id="cust-priority"><option>High</option><option selected>Medium</option><option>Low</option></select>
+        </div>
+        <div class="form-group"><label>Contact Person</label><input id="cust-contact"></div>
+        <div class="form-group"><label>Email</label><input id="cust-email" type="email"></div>
+        <div class="form-group"><label>Phone</label><input id="cust-phone"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-customer')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCustomer()">Save Customer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Restriction Modal -->
+<div class="modal-overlay" id="modal-restriction">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Restriction / Capacity Constraint</div>
+      <button class="modal-close" onclick="closeModal('modal-restriction')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="rest-id">
+      <div class="form-grid">
+        <div class="form-group"><label>Code *</label><input id="rest-code" placeholder="RES-ASSY-A"></div>
+        <div class="form-group"><label>Name *</label><input id="rest-name" placeholder="Assembly Line A"></div>
+        <div class="form-group full"><label>Description</label><textarea id="rest-desc" style="min-height:60px"></textarea></div>
+        <div class="form-group"><label>Resource Type</label><input id="rest-type" placeholder="Assembly"></div>
+        <div class="form-group"><label>Penalty Cost / Unit Violation</label><input id="rest-penalty" type="number" placeholder="150"></div>
+        <div class="form-group"><label>Valid From</label><input id="rest-from" type="date"></div>
+        <div class="form-group"><label>Valid To</label><input id="rest-to" type="date"></div>
+      </div>
+      <div class="divider"></div>
+      <div class="section-title" style="font-size:14px;margin-bottom:12px">📅 Bulk Capacity Setup</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Start Year</label><input id="cap-year" type="number" placeholder="2025" value="2025"></div>
+        <div class="form-group"><label>Start Week</label><input id="cap-week" type="number" placeholder="1" min="1" max="52"></div>
+        <div class="form-group"><label># of Weeks</label><input id="cap-num" type="number" placeholder="12" min="1"></div>
+        <div class="form-group"><label>Capacity Per Week</label><input id="cap-qty" type="number" placeholder="20"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-restriction')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRestriction()">Save & Create Capacities</button>
+    </div>
+  </div>
+</div>
+
+<!-- Component Modal -->
+<div class="modal-overlay" id="modal-component">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Component</div>
+      <button class="modal-close" onclick="closeModal('modal-component')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="comp-id">
+      <div class="form-grid">
+        <div class="form-group"><label>Component Code *</label><input id="comp-code" placeholder="CMP-MOT-2KW"></div>
+        <div class="form-group"><label>Name *</label><input id="comp-name"></div>
+        <div class="form-group full"><label>Description</label><textarea id="comp-desc" style="min-height:60px"></textarea></div>
+        <div class="form-group"><label>Supplier</label><input id="comp-supplier"></div>
+        <div class="form-group"><label>Unit Cost ($)</label><input id="comp-cost" type="number" step="10"></div>
+        <div class="form-group"><label>Lead Time (days)</label><input id="comp-lead" type="number" min="0"></div>
+        <div class="form-group"><label>Min Stock</label><input id="comp-min" type="number" min="0"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-component')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveComponent()">Save Component</button>
+    </div>
+  </div>
+</div>
+
+<!-- Penalty Rule Modal -->
+<div class="modal-overlay" id="modal-penalty">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Penalty Rule</div>
+      <button class="modal-close" onclick="closeModal('modal-penalty')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="pen-id">
+      <div class="form-grid">
+        <div class="form-group"><label>Rule Type</label>
+          <select id="pen-type">
+            <option value="late_delivery">Late Delivery</option>
+            <option value="no_fulfillment">No Fulfillment</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Customer Priority</label>
+          <select id="pen-priority">
+            <option>High</option><option>Medium</option><option>Low</option><option>All</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Product (optional)</label>
+          <select id="pen-product"><option value="">All Products</option></select>
+        </div>
+        <div class="form-group"><label>Penalty Per Day ($)</label><input id="pen-perday" type="number" placeholder="500"></div>
+        <div class="form-group"><label>Flat Penalty ($)</label><input id="pen-flat" type="number" placeholder="2000"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-penalty')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePenalty()">Save Rule</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sales Order Modal -->
+<div class="modal-overlay" id="modal-order">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title">Sales Order</div>
+      <button class="modal-close" onclick="closeModal('modal-order')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ord-id">
+      <div class="form-grid">
+        <div class="form-group"><label>Order Number</label><input id="ord-num" placeholder="Auto-generated"></div>
+        <div class="form-group"><label>Customer *</label><select id="ord-customer"></select></div>
+        <div class="form-group"><label>Product *</label><select id="ord-product" onchange="updateOrderCost()"></select></div>
+        <div class="form-group"><label>Quantity *</label><input id="ord-qty" type="number" min="1" value="1" oninput="updateOrderCost()"></div>
+        <div class="form-group"><label>Requested Date</label><input id="ord-req" type="date"></div>
+        <div class="form-group"><label>Promise Date *</label><input id="ord-promise" type="date"></div>
+        <div class="form-group"><label>Unit Price ($)</label><input id="ord-price" type="number" step="100" oninput="updateOrderCost()"></div>
+        <div class="form-group"><label>Cost ($)</label><input id="ord-cost" type="number" step="100"></div>
+        <div class="form-group"><label>Priority</label>
+          <select id="ord-priority"><option>High</option><option selected>Medium</option><option>Low</option></select>
+        </div>
+        <div class="form-group"><label>Status</label>
+          <select id="ord-status"><option>Open</option><option>Confirmed</option><option>Delivered</option><option>Cancelled</option></select>
+        </div>
+        <div class="form-group full"><label>Notes</label><textarea id="ord-notes" style="min-height:60px"></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-order')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveOrder()">Save Order</button>
+    </div>
+  </div>
+</div>
+
+<!-- Run Detail Modal -->
+<div class="modal-overlay" id="modal-run-detail">
+  <div class="modal modal-lg" style="max-width:1100px">
+    <div class="modal-header">
+      <div class="modal-title" id="run-detail-title">Run Details</div>
+      <button class="modal-close" onclick="closeModal('modal-run-detail')">✕</button>
+    </div>
+    <div class="modal-body" id="run-detail-body">Loading...</div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-run-detail')">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+// ===== API Helper =====
+const API = '/api';
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+// ===== Toast =====
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+  el.innerHTML = `<span>${icons[type] || ''}</span><span>${msg}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ===== Navigation =====
+const pageTitles = {
+  dashboard: 'Dashboard', products: 'Products', customers: 'Customers',
+  restrictions: 'Restrictions', components: 'Components', penalties: 'Penalty Rules',
+  orders: 'Sales Orders', optimize: 'Run Optimization', results: 'Results History'
+};
+
+function navigate(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`page-${page}`).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    if (n.getAttribute('onclick') === `navigate('${page}')`) n.classList.add('active');
+  });
+  document.getElementById('topbar-title').textContent = pageTitles[page] || page;
+  if (Pages[page]) Pages[page]();
+}
+
+// ===== Modal helpers =====
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// ===== Formatting =====
+const fmt = {
+  currency: v => v != null ? '$' + Number(v).toLocaleString('en-US', {maximumFractionDigits:0}) : '—',
+  date: d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—',
+  pct: v => v != null ? Number(v).toFixed(1) + '%' : '—',
+  num: v => v != null ? Number(v).toLocaleString() : '—',
+  priorityBadge: p => `<span class="badge badge-${(p||'').toLowerCase()}">${p||'—'}</span>`,
+  statusBadge: s => {
+    const cls = s === 'Open' ? 'open' : s === 'Confirmed' ? 'confirmed' : 'ok';
+    return `<span class="badge badge-${cls}">${s}</span>`;
+  }
+};
+
+// ===== Pages =====
+const Pages = {};
+let _products = [], _customers = [], _restrictions = [], _components = [];
+
+Pages.dashboard = async () => {
+  try {
+    const d = await api('GET', '/dashboard');
+    document.getElementById('kpi-orders').textContent = d.total_orders;
+    document.getElementById('kpi-orders-sub').textContent = `${d.confirmed_orders} confirmed`;
+    document.getElementById('kpi-open').textContent = d.open_orders;
+    document.getElementById('kpi-overdue').textContent = `${d.overdue_orders} overdue`;
+    document.getElementById('kpi-products').textContent = d.total_products;
+    document.getElementById('kpi-customers').textContent = `${d.total_customers} customers`;
+    const lr = d.last_run;
+    document.getElementById('kpi-lastrun').textContent = lr ? lr.run_number : 'None';
+    document.getElementById('kpi-lastrun-sub').textContent = lr ? `${lr.status} · ${fmt.pct(lr.on_time_percentage)} on-time` : 'No runs yet';
+
+    // Capacity
+    const capHtml = d.capacity_status.map(c => `
+      <div style="margin-bottom:12px">
+        <div class="flex justify-between" style="margin-bottom:4px">
+          <span style="font-size:13px">${c.name}</span>
+          <span class="mono text-xs text-muted">${c.restriction_code}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text3)">Avg capacity: ${Math.round(c.avg_capacity||0)} units/week · ${c.week_count} weeks planned</div>
+      </div>
+    `).join('') || '<div class="text-muted text-sm">No restrictions configured</div>';
+    document.getElementById('dash-capacity').innerHTML = capHtml;
+
+    // Components
+    const compHtml = d.component_status.map(c => {
+      const risk = c.shortage_risk;
+      const cls = risk === 'High' ? 'critical' : risk === 'Medium' ? 'warning' : 'ok';
+      return `<div class="flex justify-between items-center" style="margin-bottom:10px">
+        <div>
+          <div style="font-size:13px">${c.name}</div>
+          <div class="mono text-xs text-muted">${c.component_code}</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <span style="font-size:12px;color:var(--text3)">${fmt.num(c.total_available)} avail.</span>
+          <span class="badge badge-${cls}">${risk}</span>
+        </div>
+      </div>`;
+    }).join('') || '<div class="text-muted text-sm">No components configured</div>';
+    document.getElementById('dash-components').innerHTML = compHtml;
+  } catch (e) { toast(e.message, 'error'); }
+};
+
+Pages.products = async () => {
+  try {
+    _products = await api('GET', '/products');
+    const tbody = document.getElementById('tbody-products');
+    if (!_products.length) { tbody.innerHTML = '<tr><td colspan="7" class="text-muted" style="text-align:center;padding:40px">No products yet. <a href="#" onclick="openModal(\'modal-product\')" style="color:var(--accent2)">Add one</a></td></tr>'; return; }
+    tbody.innerHTML = _products.map(p => `
+      <tr>
+        <td class="mono primary">${p.product_code}</td>
+        <td class="primary">${p.name}</td>
+        <td class="text-muted">${p.category || '—'}</td>
+        <td>${fmt.currency(p.unit_price)}</td>
+        <td>${fmt.currency(p.standard_cost)}</td>
+        <td class="text-muted">${p.lead_time_days || 0}d</td>
+        <td><button class="btn btn-secondary btn-sm" onclick="editProduct('${p.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')">Del</button></td>
+      </tr>
+    `).join('');
+  } catch(e) { toast(e.message,'error'); }
+};
+
+Pages.customers = async () => {
+  try {
+    _customers = await api('GET', '/customers');
+    const tbody = document.getElementById('tbody-customers');
+    if (!_customers.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:40px">No customers yet</td></tr>'; return; }
+    tbody.innerHTML = _customers.map(c => `
+      <tr>
+        <td class="mono primary">${c.customer_code}</td>
+        <td class="primary">${c.name}</td>
+        <td>${fmt.priorityBadge(c.priority)}</td>
+        <td class="text-muted">${c.contact_person || '—'}</td>
+        <td class="text-muted">${c.email || '—'}</td>
+        <td><button class="btn btn-secondary btn-sm" onclick="editCustomer('${c.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')">Del</button></td>
+      </tr>
+    `).join('');
+  } catch(e) { toast(e.message,'error'); }
+};
+
+Pages.restrictions = async () => {
+  try {
+    _restrictions = await api('GET', '/restrictions');
+    const container = document.getElementById('restrictions-list');
+    if (!_restrictions.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">⚙️</div><div>No restrictions yet</div></div>'; return; }
+    container.innerHTML = _restrictions.map(r => {
+      const caps = r.weekly_capacities || [];
+      const capRows = caps.slice(0,6).map(c => `
+        <span style="background:var(--bg4);padding:3px 8px;border-radius:4px;font-size:11px;font-family:var(--mono)">
+          W${c.week}/${c.year}: ${c.capacity}
+        </span>
+      `).join('');
+      return `
+      <div class="card mb-4">
+        <div class="card-header">
+          <div class="flex items-center gap-3">
+            <span class="mono text-accent">${r.restriction_code}</span>
+            <span class="primary" style="font-weight:600">${r.name}</span>
+            <span class="text-muted text-sm">${r.resource_type || ''}</span>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-secondary btn-sm" onclick="editRestriction('${r.id}')">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteRestriction('${r.id}')">Delete</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="flex gap-4 mb-4" style="flex-wrap:wrap">
+            <div><div class="text-xs text-muted">Penalty / Unit</div><div style="color:var(--red);font-weight:600">$${fmt.num(r.penalty_cost_per_unit)}</div></div>
+            <div><div class="text-xs text-muted">Valid From</div><div class="text-sm">${r.valid_from || '—'}</div></div>
+            <div><div class="text-xs text-muted">Valid To</div><div class="text-sm">${r.valid_to || '—'}</div></div>
+            <div><div class="text-xs text-muted">Weekly Buckets</div><div class="text-sm">${caps.length}</div></div>
+          </div>
+          <div class="text-xs text-muted" style="margin-bottom:8px">CAPACITY BUCKETS (showing first 6)</div>
+          <div class="flex gap-2" style="flex-wrap:wrap">${capRows || '<span class="text-muted text-sm">No capacity records</span>'}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { toast(e.message,'error'); }
+};
+
+Pages.components = async () => {
+  try {
+    _components = await api('GET', '/components');
+    const container = document.getElementById('components-list');
+    if (!_components.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">🔩</div><div>No components yet</div></div>'; return; }
+    container.innerHTML = _components.map(c => {
+      const avails = c.availability || [];
+      const availRows = avails.slice(0,6).map(a => `
+        <span style="background:var(--bg4);padding:3px 8px;border-radius:4px;font-size:11px;font-family:var(--mono)">
+          W${a.week}/${a.year}: ${a.available_qty}
+        </span>
+      `).join('');
+      const totalAvail = avails.reduce((s,a) => s+a.available_qty, 0);
+      const risk = totalAvail < c.min_stock * 4 ? 'High' : totalAvail < c.min_stock * 8 ? 'Medium' : 'Low';
+      const riskCls = risk === 'High' ? 'critical' : risk === 'Medium' ? 'warning' : 'ok';
+      return `
+      <div class="card mb-4">
+        <div class="card-header">
+          <div class="flex items-center gap-3">
+            <span class="mono text-accent">${c.component_code}</span>
+            <span class="primary" style="font-weight:600">${c.name}</span>
+            <span class="badge badge-${riskCls}">${risk} Risk</span>
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-secondary btn-sm" onclick="editComponent('${c.id}')">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteComponent('${c.id}')">Delete</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="flex gap-4 mb-4" style="flex-wrap:wrap">
+            <div><div class="text-xs text-muted">Supplier</div><div class="text-sm">${c.supplier || '—'}</div></div>
+            <div><div class="text-xs text-muted">Unit Cost</div><div style="font-weight:600">${fmt.currency(c.unit_cost)}</div></div>
+            <div><div class="text-xs text-muted">Lead Time</div><div class="text-sm">${c.lead_time_days || 0}d</div></div>
+            <div><div class="text-xs text-muted">Min Stock</div><div class="text-sm">${c.min_stock || 0}</div></div>
+            <div><div class="text-xs text-muted">Total Available</div><div style="color:var(--green);font-weight:600">${fmt.num(totalAvail)}</div></div>
+          </div>
+          <div class="text-xs text-muted" style="margin-bottom:8px">AVAILABILITY BUCKETS (showing first 6)</div>
+          <div class="flex gap-2" style="flex-wrap:wrap">${availRows || '<span class="text-muted text-sm">No availability records</span>'}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { toast(e.message,'error'); }
+};
+
+Pages.penalties = async () => {
+  try {
+    const rules = await api('GET', '/penalty-rules');
+    const prods = await api('GET', '/products');
+    const prodMap = Object.fromEntries(prods.map(p => [p.id, p.name]));
+    const tbody = document.getElementById('tbody-penalties');
+    if (!rules.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:40px">No rules yet</td></tr>'; return; }
+    tbody.innerHTML = rules.map(r => `
+      <tr>
+        <td><span class="badge ${r.rule_type === 'late_delivery' ? 'badge-delayed' : 'badge-critical'}">${r.rule_type.replace('_',' ')}</span></td>
+        <td>${fmt.priorityBadge(r.customer_priority)}</td>
+        <td class="text-muted">${r.product_id ? prodMap[r.product_id] || r.product_id : 'All Products'}</td>
+        <td class="text-yellow">${fmt.currency(r.penalty_per_day)}/day</td>
+        <td class="text-red">${fmt.currency(r.penalty_flat)}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="deletePenalty('${r.id}')">Del</button></td>
+      </tr>
+    `).join('');
+  } catch(e) { toast(e.message,'error'); }
+};
+
+Pages.orders = async () => {
+  try {
+    const orders = await api('GET', '/sales-orders');
+    const tbody = document.getElementById('tbody-orders');
+    if (!orders.length) { tbody.innerHTML = '<tr><td colspan="9" class="text-muted" style="text-align:center;padding:40px">No orders yet</td></tr>'; return; }
+    const today = new Date().toISOString().split('T')[0];
+    tbody.innerHTML = orders.map(o => {
+      const overdue = o.promise_date < today && (o.status === 'Open' || o.status === 'Confirmed');
+      return `<tr ${overdue ? 'style="background:rgba(239,68,68,0.05)"' : ''}>
+        <td class="mono primary">${o.order_number}</td>
+        <td>${o.customer_name || '—'}<br><span class="text-xs text-muted">${fmt.priorityBadge(o.priority)}</span></td>
+        <td class="text-sm">${o.product_name || '—'}</td>
+        <td class="${overdue ? 'text-red' : ''}">${fmt.date(o.promise_date)}${overdue ? ' ⚠️' : ''}</td>
+        <td class="mono">${o.quantity}</td>
+        <td>${fmt.currency(o.revenue)}</td>
+        <td>${fmt.priorityBadge(o.priority)}</td>
+        <td>${fmt.statusBadge(o.status)}</td>
+        <td>
+          <button class="btn btn-secondary btn-sm" onclick="editOrder('${o.id}')">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteOrder('${o.id}')">Del</button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch(e) { toast(e.message,'error'); }
+};
+
+Pages.optimize = () => { /* static */ };
+
+Pages.results = async () => {
+  try {
+    const runs = await api('GET', '/optimization-runs');
+    const tbody = document.getElementById('tbody-results');
+    if (!runs.length) { tbody.innerHTML = '<tr><td colspan="9" class="text-muted" style="text-align:center;padding:40px">No optimization runs yet</td></tr>'; return; }
+    tbody.innerHTML = runs.map(r => {
+      const statusCls = r.status === 'Completed' ? 'badge-confirmed' : r.status === 'Failed' ? 'badge-critical' : 'badge-open';
+      return `<tr>
+        <td class="mono primary">${r.run_number}</td>
+        <td class="text-muted">${r.description || '—'}</td>
+        <td class="text-muted">${r.run_date ? new Date(r.run_date).toLocaleString() : '—'}</td>
+        <td class="mono">${r.total_orders || 0}</td>
+        <td class="${(r.on_time_percentage||0) >= 80 ? 'text-green' : 'text-yellow'}">${fmt.pct(r.on_time_percentage)}</td>
+        <td class="text-red">${fmt.currency(r.total_penalty_cost)}</td>
+        <td class="text-muted mono">${r.execution_time_ms ? r.execution_time_ms + 'ms' : '—'}</td>
+        <td><span class="badge ${statusCls}">${r.status}</span></td>
+        <td><button class="btn btn-secondary btn-sm" onclick="viewRunDetail('${r.id}')">View</button></td>
+      </tr>`;
+    }).join('');
+  } catch(e) { toast(e.message,'error'); }
+};
+
+Pages.seed = async () => {
+  if (!confirm('This will clear ALL existing data and load sample forklift manufacturing data. Continue?')) return;
+  try {
+    const r = await api('POST', '/seed');
+    toast(`Sample data loaded: ${r.orders} orders, ${r.products} products, ${r.customers} customers`, 'success');
+    navigate('dashboard');
+  } catch(e) { toast(e.message,'error'); }
+};
+
+// ===== Product CRUD =====
+async function saveProduct() {
+  try {
+    const id = document.getElementById('prod-id').value;
+    const data = {
+      product_code: document.getElementById('prod-code').value,
+      name: document.getElementById('prod-name').value,
+      description: document.getElementById('prod-desc').value,
+      category: document.getElementById('prod-cat').value,
+      unit_price: parseFloat(document.getElementById('prod-price').value)||0,
+      standard_cost: parseFloat(document.getElementById('prod-cost').value)||0,
+      lead_time_days: parseInt(document.getElementById('prod-lead').value)||0,
+      is_active: 1
+    };
+    if (id) { await api('PUT', `/products/${id}`, data); toast('Product updated','success'); }
+    else { await api('POST', '/products', data); toast('Product created','success'); }
+    closeModal('modal-product');
+    Pages.products();
+  } catch(e) { toast(e.message,'error'); }
+}
+function editProduct(id) {
+  const p = _products.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('prod-id').value = p.id;
+  document.getElementById('prod-code').value = p.product_code;
+  document.getElementById('prod-name').value = p.name;
+  document.getElementById('prod-desc').value = p.description||'';
+  document.getElementById('prod-cat').value = p.category||'';
+  document.getElementById('prod-price').value = p.unit_price||'';
+  document.getElementById('prod-cost').value = p.standard_cost||'';
+  document.getElementById('prod-lead').value = p.lead_time_days||'';
+  openModal('modal-product');
+}
+async function deleteProduct(id) {
+  if (!confirm('Delete this product?')) return;
+  try { await api('DELETE', `/products/${id}`); toast('Deleted','success'); Pages.products(); }
+  catch(e) { toast(e.message,'error'); }
+}
+
+// ===== Customer CRUD =====
+async function saveCustomer() {
+  try {
+    const id = document.getElementById('cust-id').value;
+    const data = {
+      customer_code: document.getElementById('cust-code').value,
+      name: document.getElementById('cust-name').value,
+      priority: document.getElementById('cust-priority').value,
+      contact_person: document.getElementById('cust-contact').value,
+      email: document.getElementById('cust-email').value,
+      phone: document.getElementById('cust-phone').value,
+      is_active: 1
+    };
+    if (id) { await api('PUT', `/customers/${id}`, data); toast('Customer updated','success'); }
+    else { await api('POST', '/customers', data); toast('Customer created','success'); }
+    closeModal('modal-customer');
+    Pages.customers();
+  } catch(e) { toast(e.message,'error'); }
+}
+function editCustomer(id) {
+  const c = _customers.find(x => x.id === id);
+  if (!c) return;
+  ['id','code','name','priority','contact','email','phone'].forEach(f => {
+    const el = document.getElementById(`cust-${f}`);
+    if (el) el.value = c[f] || c[`customer_${f}`] || c[`contact_person`] || '';
+  });
+  document.getElementById('cust-id').value = c.id;
+  document.getElementById('cust-code').value = c.customer_code;
+  document.getElementById('cust-name').value = c.name;
+  document.getElementById('cust-priority').value = c.priority;
+  document.getElementById('cust-contact').value = c.contact_person||'';
+  document.getElementById('cust-email').value = c.email||'';
+  document.getElementById('cust-phone').value = c.phone||'';
+  openModal('modal-customer');
+}
+async function deleteCustomer(id) {
+  if (!confirm('Delete this customer?')) return;
+  try { await api('DELETE', `/customers/${id}`); toast('Deleted','success'); Pages.customers(); }
+  catch(e) { toast(e.message,'error'); }
+}
+
+// ===== Restriction CRUD =====
+async function saveRestriction() {
+  try {
+    const id = document.getElementById('rest-id').value;
+    const data = {
+      restriction_code: document.getElementById('rest-code').value,
+      name: document.getElementById('rest-name').value,
+      description: document.getElementById('rest-desc').value,
+      resource_type: document.getElementById('rest-type').value,
+      penalty_cost_per_unit: parseFloat(document.getElementById('rest-penalty').value)||100,
+      valid_from: document.getElementById('rest-from').value,
+      valid_to: document.getElementById('rest-to').value,
+      is_active: 1
+    };
+    let restId = id;
+    if (id) { await api('PUT', `/restrictions/${id}`, data); toast('Updated','success'); }
+    else { const r = await api('POST', '/restrictions', data); restId = r.id; toast('Created','success'); }
+
+    // Bulk capacity
+    const capYear = parseInt(document.getElementById('cap-year').value);
+    const capWeek = parseInt(document.getElementById('cap-week').value);
+    const capNum = parseInt(document.getElementById('cap-num').value);
+    const capQty = parseFloat(document.getElementById('cap-qty').value);
+    if (capYear && capWeek && capNum && capQty && restId) {
+      await api('POST', `/restrictions/${restId}/bulk-capacities`, {
+        start_year: capYear, start_week: capWeek, num_weeks: capNum, capacity: capQty
+      });
+    }
+    closeModal('modal-restriction');
+    Pages.restrictions();
+  } catch(e) { toast(e.message,'error'); }
+}
+function editRestriction(id) {
+  const r = _restrictions.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('rest-id').value = r.id;
+  document.getElementById('rest-code').value = r.restriction_code;
+  document.getElementById('rest-name').value = r.name;
+  document.getElementById('rest-desc').value = r.description||'';
+  document.getElementById('rest-type').value = r.resource_type||'';
+  document.getElementById('rest-penalty').value = r.penalty_cost_per_unit||'';
+  document.getElementById('rest-from').value = r.valid_from||'';
+  document.getElementById('rest-to').value = r.valid_to||'';
+  openModal('modal-restriction');
+}
+async function deleteRestriction(id) {
+  if (!confirm('Delete this restriction?')) return;
+  try { await api('DELETE', `/restrictions/${id}`); toast('Deleted','success'); Pages.restrictions(); }
+  catch(e) { toast(e.message,'error'); }
+}
+
+// ===== Component CRUD =====
+async function saveComponent() {
+  try {
+    const id = document.getElementById('comp-id').value;
+    const data = {
+      component_code: document.getElementById('comp-code').value,
+      name: document.getElementById('comp-name').value,
+      description: document.getElementById('comp-desc').value,
+      supplier: document.getElementById('comp-supplier').value,
+      unit_cost: parseFloat(document.getElementById('comp-cost').value)||0,
+      lead_time_days: parseInt(document.getElementById('comp-lead').value)||0,
+      min_stock: parseInt(document.getElementById('comp-min').value)||0,
+      is_active: 1
+    };
+    if (id) { await api('PUT', `/components/${id}`, data); toast('Updated','success'); }
+    else { await api('POST', '/components', data); toast('Created','success'); }
+    closeModal('modal-component');
+    Pages.components();
+  } catch(e) { toast(e.message,'error'); }
+}
+function editComponent(id) {
+  const c = _components.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('comp-id').value = c.id;
+  document.getElementById('comp-code').value = c.component_code;
+  document.getElementById('comp-name').value = c.name;
+  document.getElementById('comp-desc').value = c.description||'';
+  document.getElementById('comp-supplier').value = c.supplier||'';
+  document.getElementById('comp-cost').value = c.unit_cost||'';
+  document.getElementById('comp-lead').value = c.lead_time_days||'';
+  document.getElementById('comp-min').value = c.min_stock||'';
+  openModal('modal-component');
+}
+async function deleteComponent(id) {
+  if (!confirm('Delete this component?')) return;
+  try { await api('DELETE', `/components/${id}`); toast('Deleted','success'); Pages.components(); }
+  catch(e) { toast(e.message,'error'); }
+}
+
+// ===== Penalty CRUD =====
+async function savePenalty() {
+  try {
+    const data = {
+      rule_type: document.getElementById('pen-type').value,
+      customer_priority: document.getElementById('pen-priority').value,
+      product_id: document.getElementById('pen-product').value || null,
+      penalty_per_day: parseFloat(document.getElementById('pen-perday').value)||0,
+      penalty_flat: parseFloat(document.getElementById('pen-flat').value)||0
+    };
+    await api('POST', '/penalty-rules', data);
+    toast('Rule created','success');
+    closeModal('modal-penalty');
+    Pages.penalties();
+  } catch(e) { toast(e.message,'error'); }
+}
+async function deletePenalty(id) {
+  if (!confirm('Delete this rule?')) return;
+  try { await api('DELETE', `/penalty-rules/${id}`); toast('Deleted','success'); Pages.penalties(); }
+  catch(e) { toast(e.message,'error'); }
+}
+
+// ===== Order CRUD =====
+async function openOrderModal() {
+  const prods = await api('GET', '/products');
+  const custs = await api('GET', '/customers');
+  const pSel = document.getElementById('ord-product');
+  pSel.innerHTML = prods.map(p => `<option value="${p.id}" data-price="${p.unit_price}" data-cost="${p.standard_cost}">${p.name} (${p.product_code})</option>`).join('');
+  document.getElementById('ord-customer').innerHTML = custs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  openModal('modal-order');
+}
+function updateOrderCost() {
+  const pSel = document.getElementById('ord-product');
+  const opt = pSel.options[pSel.selectedIndex];
+  if (opt) {
+    const qty = parseInt(document.getElementById('ord-qty').value)||1;
+    const price = parseFloat(opt.dataset.price)||0;
+    const cost = parseFloat(opt.dataset.cost)||0;
+    document.getElementById('ord-price').value = price;
+    document.getElementById('ord-cost').value = cost;
+  }
+}
+async function saveOrder() {
+  try {
+    const id = document.getElementById('ord-id').value;
+    const data = {
+      order_number: document.getElementById('ord-num').value || undefined,
+      customer_id: document.getElementById('ord-customer').value,
+      product_id: document.getElementById('ord-product').value,
+      quantity: parseInt(document.getElementById('ord-qty').value)||1,
+      requested_date: document.getElementById('ord-req').value,
+      promise_date: document.getElementById('ord-promise').value,
+      unit_price: parseFloat(document.getElementById('ord-price').value)||0,
+      cost: parseFloat(document.getElementById('ord-cost').value)||0,
+      priority: document.getElementById('ord-priority').value,
+      status: document.getElementById('ord-status').value,
+      notes: document.getElementById('ord-notes').value
+    };
+    if (id) { await api('PUT', `/sales-orders/${id}`, data); toast('Order updated','success'); }
+    else { await api('POST', '/sales-orders', data); toast('Order created','success'); }
+    closeModal('modal-order');
+    Pages.orders();
+  } catch(e) { toast(e.message,'error'); }
+}
+async function editOrder(id) {
+  try {
+    const prods = await api('GET', '/products');
+    const custs = await api('GET', '/customers');
+    const ord = await api('GET', `/sales-orders/${id}`);
+    document.getElementById('ord-product').innerHTML = prods.map(p => `<option value="${p.id}" data-price="${p.unit_price}" data-cost="${p.standard_cost}">${p.name} (${p.product_code})</option>`).join('');
+    document.getElementById('ord-customer').innerHTML = custs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    document.getElementById('ord-id').value = ord.id;
+    document.getElementById('ord-num').value = ord.order_number;
+    document.getElementById('ord-customer').value = ord.customer_id;
+    document.getElementById('ord-product').value = ord.product_id;
+    document.getElementById('ord-qty').value = ord.quantity;
+    document.getElementById('ord-req').value = ord.requested_date||'';
+    document.getElementById('ord-promise').value = ord.promise_date;
+    document.getElementById('ord-price').value = ord.unit_price;
+    document.getElementById('ord-cost').value = ord.cost;
+    document.getElementById('ord-priority').value = ord.priority;
+    document.getElementById('ord-status').value = ord.status;
+    document.getElementById('ord-notes').value = ord.notes||'';
+    openModal('modal-order');
+  } catch(e) { toast(e.message,'error'); }
+}
+async function deleteOrder(id) {
+  if (!confirm('Delete this order?')) return;
+  try { await api('DELETE', `/sales-orders/${id}`); toast('Deleted','success'); Pages.orders(); }
+  catch(e) { toast(e.message,'error'); }
+}
+
+// ===== Optimization =====
+async function runOptimization() {
+  const btn = document.getElementById('btn-run-opt');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Running...';
+
+  document.getElementById('opt-progress').innerHTML = `
+    <div style="text-align:center;padding:40px 20px">
+      <div class="spinner" style="width:40px;height:40px;margin:0 auto 16px;border-width:3px"></div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:8px">Optimization in progress...</div>
+      <div class="text-muted text-sm">Genetic algorithm is evaluating order schedules</div>
+    </div>`;
+  document.getElementById('opt-results-section').style.display = 'none';
+
+  try {
+    const result = await api('POST', '/optimize', {
+      description: document.getElementById('opt-desc').value,
+      population_size: parseInt(document.getElementById('opt-pop').value)||50,
+      generations: parseInt(document.getElementById('opt-gen').value)||100,
+      mutation_rate: parseFloat(document.getElementById('opt-mut').value)||0.1,
+      crossover_rate: parseFloat(document.getElementById('opt-cross').value)||0.8
+    });
+
+    const s = result.summary;
+    document.getElementById('opt-progress').innerHTML = `
+      <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:16px;text-align:center">
+        <div style="font-size:28px;margin-bottom:8px">✅</div>
+        <div style="font-size:15px;font-weight:700;color:var(--green)">Optimization Complete</div>
+        <div class="text-sm text-muted" style="margin-top:4px">${result.run?.run_number} · ${s.execution_time_ms}ms</div>
+      </div>`;
+
+    renderOptimizationResults(result);
+    document.getElementById('opt-results-section').style.display = 'block';
+    toast(`Optimization complete: ${s.on_time_percentage}% on-time`, 'success');
+  } catch(e) {
+    document.getElementById('opt-progress').innerHTML = `
+      <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:16px;text-align:center">
+        <div style="font-size:28px;margin-bottom:8px">❌</div>
+        <div style="color:var(--red)">Optimization Failed</div>
+        <div class="text-sm text-muted">${e.message}</div>
+      </div>`;
+    toast(e.message,'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>🧬</span> Run Optimization';
+  }
+}
+
+function renderOptimizationResults(result) {
+  const s = result.summary;
+  const orders = result.order_results || [];
+  const caps = result.capacity_analysis || [];
+  const comps = result.component_analysis || [];
+
+  const critCaps = caps.filter(c => c.is_critical);
+  const critComps = comps.filter(c => c.is_critical);
+
+  let html = `
+    <div class="result-grid">
+      <div class="result-metric">
+        <div class="val" style="color:${s.on_time_percentage >= 80 ? 'var(--green)' : 'var(--yellow)'}">${s.on_time_percentage}%</div>
+        <div class="lbl">On-Time Delivery</div>
+      </div>
+      <div class="result-metric">
+        <div class="val" style="color:var(--red)">$${Number(s.total_penalty_cost).toLocaleString()}</div>
+        <div class="lbl">Total Penalty Cost</div>
+      </div>
+      <div class="result-metric">
+        <div class="val" style="color:var(--accent2)">${s.on_time_orders}/${s.total_orders}</div>
+        <div class="lbl">Orders On-Time</div>
+      </div>
+      <div class="result-metric">
+        <div class="val" style="color:var(--yellow)">${s.avg_delay_days}d</div>
+        <div class="lbl">Avg Delay</div>
+      </div>
+      <div class="result-metric">
+        <div class="val" style="color:${critCaps.length > 0 ? 'var(--red)' : 'var(--green)'}">${critCaps.length}</div>
+        <div class="lbl">Critical Restrictions</div>
+      </div>
+      <div class="result-metric">
+        <div class="val" style="color:${critComps.length > 0 ? 'var(--red)' : 'var(--green)'}">${critComps.length}</div>
+        <div class="lbl">Critical Components</div>
+      </div>
+    </div>
+
+    <div class="tabs" id="result-tabs">
+      <div class="tab active" onclick="switchTab('orders')">📋 Order Results (${orders.length})</div>
+      <div class="tab" onclick="switchTab('capacity')">⚙️ Capacity Analysis</div>
+      <div class="tab" onclick="switchTab('comps')">🔩 Component Analysis</div>
+    </div>
+
+    <div id="tab-orders">
+      <div class="card">
+        <div class="card-body" style="padding:0">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Order #</th><th>Customer</th><th>Product</th><th>Original Date</th><th>Optimized Date</th><th>Delay</th><th>Penalty</th><th>Priority</th><th>Status</th></tr></thead>
+              <tbody>${orders.map(o => {
+                const delayed = o.delay_days > 0;
+                return `<tr>
+                  <td class="mono primary">${o.order_number}</td>
+                  <td class="text-sm">${o.customer_name||'—'}</td>
+                  <td class="text-sm">${o.product_name||'—'}</td>
+                  <td>${fmt.date(o.original_date)}</td>
+                  <td class="${delayed ? 'text-yellow' : 'text-green'}">${fmt.date(o.optimized_date)}</td>
+                  <td class="${delayed ? 'text-yellow' : 'text-green'}">${delayed ? '+'+o.delay_days+'d' : '✓ On Time'}</td>
+                  <td class="${o.penalty_cost > 0 ? 'text-red' : 'text-green'}">${fmt.currency(o.penalty_cost)}</td>
+                  <td>${fmt.priorityBadge(o.priority)}</td>
+                  <td><span class="badge ${delayed ? 'badge-delayed' : 'badge-ontime'}">${o.status}</span></td>
+                </tr>`;
+              }).join('')}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-capacity" style="display:none">
+      ${critCaps.length === 0 ? '<div class="card"><div class="card-body"><div class="text-muted text-sm">No capacity violations in this run ✅</div></div></div>' : ''}
+      <div class="card">
+        <div class="card-body" style="padding:0">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Restriction</th><th>Week</th><th>Capacity</th><th>Required</th><th>Utilization</th><th>Over-Cap</th><th>Violation Cost</th><th>Critical</th></tr></thead>
+              <tbody>${caps.map(c => {
+                const pct = Math.min(100, c.utilization_pct||0);
+                const color = pct >= 100 ? 'var(--red)' : pct >= 80 ? 'var(--yellow)' : 'var(--green)';
+                return `<tr>
+                  <td><div>${c.restriction_name}</div><div class="mono text-xs text-muted">${c.restriction_code}</div></td>
+                  <td class="mono">W${c.week}/${c.year}</td>
+                  <td class="mono">${c.capacity}</td>
+                  <td class="mono">${Math.round(c.required_capacity||0)}</td>
+                  <td>
+                    <div class="flex items-center gap-2">
+                      <div class="progress-bar" style="width:80px"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
+                      <span style="color:${color};font-size:12px">${Math.round(pct)}%</span>
+                    </div>
+                  </td>
+                  <td class="${c.over_capacity > 0 ? 'text-red' : 'text-green'}">${Math.round(c.over_capacity||0)}</td>
+                  <td class="${c.violation_cost > 0 ? 'text-red' : ''}">${fmt.currency(c.violation_cost)}</td>
+                  <td>${c.is_critical ? '<span class="badge badge-critical">⚠ Critical</span>' : '<span class="badge badge-ok">OK</span>'}</td>
+                </tr>`;
+              }).join('')}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-comps" style="display:none">
+      ${critComps.length === 0 ? '<div class="card" style="margin-bottom:16px"><div class="card-body"><div class="text-muted text-sm">No component shortages in this run ✅</div></div></div>' : ''}
+      <div class="card">
+        <div class="card-body" style="padding:0">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Component</th><th>Week</th><th>Available</th><th>Required</th><th>Shortage</th><th>Shortage Cost</th><th>Critical</th></tr></thead>
+              <tbody>${comps.map(c => `<tr>
+                <td><div>${c.component_name}</div><div class="mono text-xs text-muted">${c.component_code}</div></td>
+                <td class="mono">W${c.week}/${c.year}</td>
+                <td class="mono text-green">${Math.round(c.available||0)}</td>
+                <td class="mono">${Math.round(c.required||0)}</td>
+                <td class="${c.shortage > 0 ? 'text-red' : 'text-green'}">${Math.round(c.shortage||0)}</td>
+                <td class="${c.shortage_cost > 0 ? 'text-red' : ''}">${fmt.currency(c.shortage_cost)}</td>
+                <td>${c.is_critical ? '<span class="badge badge-critical">⚠ Critical</span>' : '<span class="badge badge-ok">OK</span>'}</td>
+              </tr>`).join('')}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('opt-results-content').innerHTML = html;
+}
+
+function switchTab(tab) {
+  ['orders','capacity','comps'].forEach(t => {
+    const el = document.getElementById(`tab-${t}`);
+    if (el) el.style.display = t === tab ? 'block' : 'none';
+  });
+  document.querySelectorAll('#result-tabs .tab').forEach((t,i) => {
+    t.classList.toggle('active', ['orders','capacity','comps'][i] === tab);
+  });
+}
+
+// ===== View Run Detail =====
+async function viewRunDetail(id) {
+  document.getElementById('run-detail-body').innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner" style="width:32px;height:32px;margin:auto"></div></div>';
+  openModal('modal-run-detail');
+  try {
+    const run = await api('GET', `/optimization-runs/${id}`);
+    document.getElementById('run-detail-title').textContent = run.run_number;
+    const s = {
+      total_orders: run.total_orders,
+      on_time_orders: run.on_time_orders,
+      delayed_orders: run.delayed_orders,
+      total_penalty_cost: run.total_penalty_cost,
+      on_time_percentage: run.on_time_percentage,
+      avg_delay_days: run.avg_delay_days ? Number(run.avg_delay_days).toFixed(1) : '0',
+      execution_time_ms: run.execution_time_ms
+    };
+    const fakeResult = {
+      summary: s,
+      run,
+      order_results: run.order_results,
+      capacity_analysis: run.capacity_analysis,
+      component_analysis: run.component_analysis
+    };
+    const tempDiv = document.createElement('div');
+    document.getElementById('run-detail-body').innerHTML = '';
+    // Re-render results inline
+    const orders = run.order_results || [];
+    const caps = run.capacity_analysis || [];
+    const comps = run.component_analysis || [];
+    document.getElementById('run-detail-body').innerHTML = `
+      <div class="result-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="result-metric"><div class="val" style="color:var(--green)">${Number(run.on_time_percentage||0).toFixed(1)}%</div><div class="lbl">On-Time</div></div>
+        <div class="result-metric"><div class="val" style="color:var(--red)">$${Number(run.total_penalty_cost||0).toLocaleString()}</div><div class="lbl">Total Penalty</div></div>
+        <div class="result-metric"><div class="val" style="color:var(--accent2)">${run.on_time_orders||0}/${run.total_orders||0}</div><div class="lbl">On-Time Orders</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Order Results</div></div>
+        <div class="card-body" style="padding:0">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Order</th><th>Customer</th><th>Product</th><th>Original</th><th>Optimized</th><th>Delay</th><th>Penalty</th><th>Status</th></tr></thead>
+              <tbody>${orders.map(o => `<tr>
+                <td class="mono">${o.order_number}</td>
+                <td>${o.customer_name||'—'}</td>
+                <td>${o.product_name||'—'}</td>
+                <td>${fmt.date(o.original_date)}</td>
+                <td class="${o.delay_days > 0 ? 'text-yellow' : 'text-green'}">${fmt.date(o.optimized_date)}</td>
+                <td class="${o.delay_days > 0 ? 'text-yellow' : 'text-green'}">${o.delay_days > 0 ? '+'+o.delay_days+'d' : '✓'}</td>
+                <td class="${o.penalty_cost > 0 ? 'text-red' : ''}">${fmt.currency(o.penalty_cost)}</td>
+                <td><span class="badge ${o.delay_days > 0 ? 'badge-delayed' : 'badge-ontime'}">${o.status}</span></td>
+              </tr>`).join('')}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  } catch(e) { document.getElementById('run-detail-body').innerHTML = `<div class="text-red">${e.message}</div>`; }
+}
+
+// ===== Init =====
+document.addEventListener('DOMContentLoaded', () => {
+  Pages.dashboard();
+  // Pre-load penalty modal products
+  api('GET', '/products').then(prods => {
+    document.getElementById('pen-product').innerHTML =
+      '<option value="">All Products</option>' +
+      prods.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  }).catch(() => {});
+
+  // Set default week values for restriction capacity
+  const now = new Date();
+  const m = require ? null : null;
+  document.getElementById('cap-year').value = now.getFullYear();
+  // Rough ISO week
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const week = Math.ceil(((now - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+  document.getElementById('cap-week').value = week;
+  document.getElementById('cap-num').value = 14;
+});
+</script>
+</body>
+</html>

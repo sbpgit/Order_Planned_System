@@ -1,0 +1,112 @@
+_schema-version: "3.3"
+ID: OrderBasedPlanning
+version: 1.0.0
+description: CAP Planning Application
+
+parameters:
+  enable-parallel-deployments: true
+
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm ci
+        - npx cds build --production
+
+modules:
+
+# ---------------------
+# CAP Service
+# ---------------------
+- name: OrderBasedPlanning-srv
+  type: nodejs
+  path: gen/srv
+  parameters:
+    buildpack: nodejs_buildpack
+    instances: 1
+  build-parameters:
+    builder: npm-ci
+  provides:
+    - name: srv-api
+      properties:
+        srv-url: ${default-url}
+  requires:
+    - name: OrderBasedPlanning-auth
+    - name: OrderBasedPlanning-db
+    - name: OrderBasedPlanning-destination
+
+# ---------------------
+# HANA HDI Deployer
+# ---------------------
+- name: OrderBasedPlanning-db-deployer
+  type: hdb
+  path: gen/db
+  parameters:
+    buildpack: nodejs_buildpack
+  requires:
+    - name: OrderBasedPlanning-db
+
+# ---------------------
+# Approuter
+# ---------------------
+- name: OrderBasedPlanning
+  type: approuter.nodejs
+  path: app/router
+  parameters:
+    memory: 256M
+    disk-quota: 256M
+  requires:
+    - name: srv-api
+      group: destinations
+      properties:
+        name: srv-api
+        url: ~{srv-url}
+        forwardAuthToken: true
+    - name: OrderBasedPlanning-auth
+    - name: OrderBasedPlanning-destination
+  provides:
+    - name: app-api
+      properties:
+        app-uri: ${default-uri}
+
+resources:
+
+# ---------------------
+# XSUAA
+# ---------------------
+- name: OrderBasedPlanning-auth
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: xsuaa
+    service-plan: application
+    path: ./xs-security.json
+    config:
+      xsappname: OrderBasedPlanning-${org}-${space}
+      tenant-mode: dedicated
+
+# ---------------------
+# HANA
+# ---------------------
+- name: OrderBasedPlanning-db
+  type: com.sap.xs.hdi-container
+  parameters:
+    service: hana
+    service-plan: hdi-shared
+
+# ---------------------
+# Destination
+# ---------------------
+- name: OrderBasedPlanning-destination
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: destination
+    service-plan: lite
+    config:
+      init_data:
+        instance:
+          destinations:
+            - Name: ui5
+              URL: https://ui5.sap.com
+              ProxyType: Internet
+              Type: HTTP
+              Authentication: NoAuthentication
