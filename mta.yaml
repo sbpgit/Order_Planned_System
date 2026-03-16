@@ -1,107 +1,144 @@
-_schema-version: "3.3"
+_schema-version: "3.1"
 ID: OrderBasedPlanning
+description: CAP Order Based Planning Application
 version: 1.0.0
-description: CAP Planning Application
-
-parameters:
-  enable-parallel-deployments: true
-
-build-parameters:
-  before-all:
-    - builder: custom
-      commands:
-        - npm ci
-        - npx cds build --production
 
 modules:
 
-# ---------------------
-# CAP Service
-# ---------------------
+# ------------------------------------------------------------
+# CAP SERVICE
+# ------------------------------------------------------------
 - name: OrderBasedPlanning-srv
   type: nodejs
   path: gen/srv
-  parameters:
-    buildpack: nodejs_buildpack
-    instances: 1
-  build-parameters:
-    builder: npm-ci
   provides:
     - name: srv-api
       properties:
         srv-url: ${default-url}
   requires:
-    - name: OrderBasedPlanning-auth
     - name: OrderBasedPlanning-db
-    - name: OrderBasedPlanning-destination
+    - name: uaa_OrderBasedPlanning
+  parameters:
+    buildpack: nodejs_buildpack
+    disk-quota: 512MB
+    memory: 512MB
+  build-parameters:
+    builder: npm
+    ignore:
+      - node_modules/
+      - env
 
-# ---------------------
-# HANA HDI Deployer
-# ---------------------
+# ------------------------------------------------------------
+# HANA DB DEPLOYER
+# ------------------------------------------------------------
 - name: OrderBasedPlanning-db-deployer
   type: hdb
   path: gen/db
-  parameters:
-    buildpack: nodejs_buildpack
   requires:
     - name: OrderBasedPlanning-db
-
-# ---------------------
-# Approuter
-# ---------------------
-- name: OrderBasedPlanning
-  type: approuter.nodejs
-  path: app/router
   parameters:
-    memory: 256M
-    disk-quota: 256M
+    buildpack: nodejs_buildpack
+
+# ------------------------------------------------------------
+# HTML5 CONTENT DEPLOYER
+# ------------------------------------------------------------
+- name: OrderBasedPlanning-app-content
+  type: com.sap.application.content
+  path: .
   requires:
-    - name: srv-api
-      group: destinations
-      properties:
-        name: srv-api
-        url: ~{srv-url}
-        forwardAuthToken: true
-    - name: OrderBasedPlanning-auth
-    - name: OrderBasedPlanning-destination
-  provides:
-    - name: app-api
-      properties:
-        app-uri: ${default-uri}
+    - name: OrderBasedPlanning-repo-host
+      parameters:
+        content-target: true
+  build-parameters:
+    build-result: resources
+    requires:
+      - name: orderbasedplanning
+        artifacts:
+          - orderbasedplanning.zip
+        target-path: resources/
+
+# ------------------------------------------------------------
+# UI5 APPLICATION
+# ------------------------------------------------------------
+- name: orderbasedplanning
+  type: html5
+  path: app/orderbasedplanning
+  build-parameters:
+    build-result: dist
+    builder: custom
+    commands:
+      - npm install
+      - npm run build:cf
+    ignore:
+      - node_modules/
+    supported-platforms: []
+
+# ------------------------------------------------------------
+# DESTINATION CONTENT
+# ------------------------------------------------------------
+- name: OrderBasedPlanning-destination-content
+  type: com.sap.application.content
+  requires:
+    - name: OrderBasedPlanning-destination-service
+      parameters:
+        content-target: true
+    - name: OrderBasedPlanning-repo-host
+      parameters:
+        service-key:
+          name: OrderBasedPlanning-repo-host-key
+    - name: uaa_OrderBasedPlanning
+      parameters:
+        service-key:
+          name: uaa_OrderBasedPlanning-key
+  parameters:
+    content:
+      instance:
+        destinations:
+
+          - Name: OrderBasedPlanning_repo_host
+            ServiceInstanceName: OrderBasedPlanning-html5-srv
+            ServiceKeyName: OrderBasedPlanning-repo-host-key
+            sap.cloud.service: OrderBasedPlanning
+
+          - Authentication: OAuth2UserTokenExchange
+            Name: OrderBasedPlanning_uaa
+            ServiceInstanceName: OrderBasedPlanning-xsuaa-service
+            ServiceKeyName: uaa_OrderBasedPlanning-key
+            sap.cloud.service: OrderBasedPlanning
+
+        existing_destinations_policy: ignore
+  build-parameters:
+    no-source: true
 
 resources:
 
-# ---------------------
-# XSUAA
-# ---------------------
-- name: OrderBasedPlanning-auth
-  type: org.cloudfoundry.managed-service
-  parameters:
-    service: xsuaa
-    service-plan: application
-    path: ./xs-security.json
-    config:
-      xsappname: OrderBasedPlanning-${org}-${space}
-      tenant-mode: dedicated
-
-# ---------------------
-# HANA
-# ---------------------
+# ------------------------------------------------------------
+# HANA HDI CONTAINER
+# ------------------------------------------------------------
 - name: OrderBasedPlanning-db
   type: com.sap.xs.hdi-container
   parameters:
     service: hana
     service-plan: hdi-shared
 
-# ---------------------
-# Destination
-# ---------------------
-- name: OrderBasedPlanning-destination
+# ------------------------------------------------------------
+# HTML5 APP REPO HOST
+# ------------------------------------------------------------
+- name: OrderBasedPlanning-repo-host
   type: org.cloudfoundry.managed-service
   parameters:
-    service: destination
-    service-plan: lite
+    service: html5-apps-repo
+    service-name: OrderBasedPlanning-html5-srv
+    service-plan: app-host
+
+# ------------------------------------------------------------
+# DESTINATION SERVICE
+# ------------------------------------------------------------
+- name: OrderBasedPlanning-destination-service
+  type: org.cloudfoundry.managed-service
+  parameters:
     config:
+      HTML5Runtime_enabled: true
       init_data:
         instance:
           destinations:
@@ -110,3 +147,30 @@ resources:
               ProxyType: Internet
               Type: HTTP
               Authentication: NoAuthentication
+          existing_destinations_policy: update
+      version: 1.0.0
+    service: destination
+    service-name: OrderBasedPlanning-destination-service
+    service-plan: lite
+
+# ------------------------------------------------------------
+# XSUAA
+# ------------------------------------------------------------
+- name: uaa_OrderBasedPlanning
+  type: org.cloudfoundry.managed-service
+  parameters:
+    path: ./xs-security.json
+    service: xsuaa
+    service-name: OrderBasedPlanning-xsuaa-service
+    service-plan: application
+
+parameters:
+  deploy_mode: html5-repo
+  enable-parallel-deployments: true
+
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npm install
+        - npx cds build --production

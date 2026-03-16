@@ -543,8 +543,8 @@ router.get('/dashboard', async (req, res) => {
       db.count('restrictions'),
       db.count('components'),
       db.count('sales_orders'),
-      db.count('sales_orders', { status: 'Open' }),
-      db.count('sales_orders', { status: 'Confirmed' }),
+      db.count('sales_orders', { STATUS: 'Open' }),
+      db.count('sales_orders', { STATUS: 'Confirmed' }),
       db.queryOne(
         `SELECT COUNT(*) AS cnt FROM OPS_SALES_ORDERS
          WHERE promise_date < ? AND status IN ('Open','Confirmed')`, [today]),
@@ -557,14 +557,14 @@ router.get('/dashboard', async (req, res) => {
                AVG(wc.capacity) AS avg_capacity, COUNT(wc.id) AS week_count
         FROM   restrictions r
         LEFT JOIN weekly_capacities wc ON r.id = wc.restriction_id
-        WHERE  r.is_active = 1
+        WHERE  r.is_active = true
         GROUP BY r.id, r.name, r.restriction_code`),
       db.queryAll(`
         SELECT comp.name, comp.component_code, comp.min_stock,
                COALESCE(SUM(ca.available_qty), 0) AS total_available
         FROM   components comp
         LEFT JOIN component_availability ca ON comp.id = ca.component_id
-        WHERE  comp.is_active = 1
+        WHERE  comp.is_active = true
         GROUP BY comp.id, comp.name, comp.component_code, comp.min_stock`)
     ]);
 

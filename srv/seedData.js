@@ -17,7 +17,7 @@ async function seedData() {
     { id: uuidv4(), customer_code: 'CUST005', name: 'Express Freight Partners', priority: 'Medium', contact_person: 'David Kim', email: 'd.kim@efp.com', phone: '+1-555-0105' },
     { id: uuidv4(), customer_code: 'CUST006', name: 'Harbour Port Authority', priority: 'High', contact_person: 'Linda Mbeki', email: 'l.mbeki@harbour.com', phone: '+1-555-0106' },
   ];
-  customers.forEach(async c => await db.insert('customers', { ...c, is_active: 1 }));
+  customers.forEach(async c => await db.insert('customers', { ...c, is_active: true }));
   console.log(`  ✓ ${customers.length} customers`);
 
   // ---- Products (Forklifts) ----
@@ -29,7 +29,7 @@ async function seedData() {
     { id: uuidv4(), product_code: 'FL-RT4T', name: 'Rough Terrain Forklift 4T', description: '4-tonne rough terrain forklift, diesel, pneumatic tyres, outdoor use', category: 'Specialty Forklifts', unit_price: 58000, standard_cost: 43500, lead_time_days: 21 },
     { id: uuidv4(), product_code: 'FL-VNA', name: 'VNA Turret Truck 1.2T', description: 'Very Narrow Aisle turret truck, laser guided, 1.2T, 12m lift', category: 'Electric Reach Trucks', unit_price: 78000, standard_cost: 56000, lead_time_days: 25 },
   ];
-  products.forEach(async p => await db.insert('products', { ...p, is_active: 1 }));
+  products.forEach(async p => await db.insert('products', { ...p, is_active: true }));
   console.log(`  ✓ ${products.length} products`);
 
   // ---- Restrictions ----
@@ -44,7 +44,7 @@ async function seedData() {
     { id: uuidv4(), restriction_code: 'RES-TEST', name: 'Final Testing Bay', description: 'Load testing, safety certification, final QC', resource_type: 'Testing', penalty_cost_per_unit: 180, valid_from: validFrom, valid_to: validTo },
     { id: uuidv4(), restriction_code: 'RES-MAST', name: 'Mast & Lift System', description: 'Mast assembly and hydraulic system installation', resource_type: 'Assembly', penalty_cost_per_unit: 220, valid_from: validFrom, valid_to: validTo },
   ];
-  restrictions.forEach(async r => await db.insert('restrictions', { ...r, is_active: 1 }));
+  restrictions.forEach(async r => await db.insert('restrictions', { ...r, is_active: true }));
   console.log(`  ✓ ${restrictions.length} restrictions`);
 
   // ---- Weekly Capacities (14 weeks) ----
@@ -102,7 +102,7 @@ async function seedData() {
     { id: uuidv4(), component_code: 'CMP-ENG-D3T', name: 'Diesel Engine 3T', description: 'Kubota D1105 diesel engine, Tier 4 Final', supplier: 'Kubota Corp', unit_cost: 6800, lead_time_days: 18, min_stock: 8 },
     { id: uuidv4(), component_code: 'CMP-CAB-ROPS', name: 'ROPS Cab Assembly', description: 'Roll-Over Protective Structure cab, vinyl glazed', supplier: 'SafetyCab Mfg', unit_cost: 3400, lead_time_days: 15, min_stock: 6 },
   ];
-  components.forEach(async c => await db.insert('components', { ...c, is_active: 1 }));
+  components.forEach(async c => await db.insert('components', { ...c, is_active: true }));
   console.log(`  ✓ ${components.length} components`);
 
   // ---- Component Availability (14 weeks) ----

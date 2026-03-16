@@ -1,0 +1,22 @@
+### Get sample data
+POST   http://localhost:4004/api/seed
+Content-Type: application/json
+
+{
+	  
+
+}
+
+### run optimizations
+POST   http://localhost:4004/api/optimize
+Content-Type: application/json
+
+{
+	"crossover_rate": 0.8,
+    "description": "Planning Run",
+    "generations": 120,
+    "mutation_rate": 0.1,
+    "population_size": 60  
+
+}
+

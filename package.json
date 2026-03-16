@@ -33,7 +33,7 @@
   "cds": {
     "requires": {
       "[production]": {
-        "auth": "xsuaa"
+        "auth": "mocked"
       },
       "connectivity": true,
       "destinations": true,
