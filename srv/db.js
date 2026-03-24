@@ -584,13 +584,15 @@ function _remapSql(sql) {
 // ─────────────────────────────────────────────────────────
 function normalizeRow(row) {
   const out = {};
-  for (const k in row) {
+ for (const k in row) {
     out[k.toLowerCase()] = row[k];
   }
   return out;
 }
 async function queryAll(sql, params = []) {
   const db = await getDb();
+  console.log("SQL:", _remapSql(sql));
+console.log("PARAMS:", params);
   const rows = await db.run(_remapSql(sql), params);
   return rows.map(normalizeRow);
 }
@@ -734,7 +736,7 @@ async function getOrdersWithDetails() {
     FROM sales_orders so
     LEFT JOIN customers c ON so.customer_id = c.id
     LEFT JOIN products  p ON so.product_id = p.id
-    ORDER BY so.promise_date ASC
+    ORDER BY so.promise_date ASC, so.priority ASC, c.priority ASC
   `);
 
   for (const order of orders) {
@@ -757,7 +759,7 @@ async function getOrdersWithDetails() {
   return orders;
 }
 async function getRestrictionsWithCapacity() {
-  const restrictions = await findAll('restrictions', { is_active: 1 });
+  const restrictions = await findAll('restrictions', { is_active: true });
   for (const r of restrictions) {
     r.weekly_capacities = await queryAll(
       `SELECT * FROM weekly_capacities WHERE restriction_id = ? ORDER BY year, week`, [r.id]
@@ -767,7 +769,7 @@ async function getRestrictionsWithCapacity() {
 }
 
 async function getComponentsWithAvailability() {
-  const components = await findAll('components', { is_active: 1 });
+  const components = await findAll('components', { is_active: true });
   for (const c of components) {
     c.availability = await queryAll(
       `SELECT * FROM component_availability WHERE component_id = ? ORDER BY year, week`, [c.id]

@@ -217,7 +217,7 @@ class OrderPlanningOptimizer {
         const overCapacity = Math.max(0, usage - capacity);
 
         if (overCapacity > 0) {
-          totalPenalty += overCapacity * (restriction.penalty_cost_per_unit || 100);
+          totalPenalty += Number(overCapacity) * Number(restriction.penalty_cost_per_unit || 100);
         }
       }
     }
@@ -230,19 +230,25 @@ class OrderPlanningOptimizer {
       // Build cumulative availability map
       const availMap = {};
       for (const avail of (component.availability || [])) {
-        availMap[`${avail.year}-${avail.week}`] = avail.available_qty;
+        availMap[`${avail.year}-${avail.week}`] = Number(avail.available_qty);
       }
 
       for (const [weekKey, required] of Object.entries(usageByWeek)) {
         const available = availMap[weekKey] || 0;
-        const shortage = Math.max(0, required - available);
+        const shortage = Math.max(0, Number(required) - available);
         if (shortage > 0) {
           // No fulfillment penalty: 3x component cost per unit short
-          totalPenalty += shortage * (component.unit_cost || 10) * 3;
+          totalPenalty += Number(shortage) * Number(component.unit_cost || 10) * 3;
         }
       }
     }
-
+    if (isNaN(totalPenalty)) {
+      console.error('❌ NaN detected in fitness!', {
+        chromosome,
+        totalPenalty
+      });
+      totalPenalty = Number.MAX_SAFE_INTEGER;
+    }
     return {
       fitness: totalPenalty,
       details: {
@@ -253,7 +259,7 @@ class OrderPlanningOptimizer {
       }
     };
   }
-
+  
   _calcLatePenalty(order, delayDays, penaltyMap) {
     const priority = order.priority || 'Medium';
     const productId = order.product_id;
@@ -267,12 +273,12 @@ class OrderPlanningOptimizer {
     const rule = penaltyMap[key1] || penaltyMap[key2] || penaltyMap[key3] || penaltyMap[key4];
 
     if (rule) {
-      return (rule.penalty_per_day * delayDays) + rule.penalty_flat;
+      return (Number(rule.penalty_per_day) * Number(delayDays)) + Number(rule.penalty_flat);
     }
 
     // Default fallback by priority
     const multiplier = priority === 'High' ? 3 : priority === 'Medium' ? 2 : 1;
-    return delayDays * 500 * multiplier;
+    return Number(delayDays) * 500 * multiplier;
   }
 
   _buildPenaltyMap(penaltyRules) {

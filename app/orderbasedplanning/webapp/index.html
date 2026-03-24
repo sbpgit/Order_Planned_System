@@ -1211,7 +1211,7 @@ Pages.components = async () => {
           W${a.week}/${a.year}: ${a.available_qty}
         </span>
       `).join('');
-      const totalAvail = avails.reduce((s,a) => s+a.available_qty, 0);
+      const totalAvail = avails.reduce((s,a) => s+ parseInt(a.available_qty), 0);
       const risk = totalAvail < c.min_stock * 4 ? 'High' : totalAvail < c.min_stock * 8 ? 'Medium' : 'Low';
       const riskCls = risk === 'High' ? 'critical' : risk === 'Medium' ? 'warning' : 'ok';
       return `
@@ -1641,8 +1641,8 @@ function renderOptimizationResults(result) {
 
   const critCaps = caps.filter(c => c.is_critical);
   const critComps = comps.filter(c => c.is_critical);
-  const totalViolationCost = caps.reduce((a,c) => a + (c.violation_cost||0), 0);
-  const totalShortageCost = comps.reduce((a,c) => a + (c.shortage_cost||0), 0);
+  const totalViolationCost = caps.reduce((a,c) => a + (parseInt(c.violation_cost)||0), 0);
+  const totalShortageCost = comps.reduce((a,c) => a + (parseInt(c.shortage_cost)||0), 0);
   const onTimePct = Number(s.on_time_percentage||0);
   const ontimeColor = onTimePct >= 80 ? 'var(--green)' : onTimePct >= 60 ? 'var(--yellow)' : 'var(--red)';
 

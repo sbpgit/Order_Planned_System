@@ -361,10 +361,13 @@ router.post('/optimize', async (req, res) => {
     });
 
     const orders       = await db.getOrdersWithDetails();
+    console.log(orders);
     const restrictions = await db.getRestrictionsWithCapacity();
+    console.log(restrictions);
     const components   = await db.getComponentsWithAvailability();
+    console.log(components);
     const penaltyRules = await db.findAll('penalty_rules');
-
+    console.log(penaltyRules);
     if (orders.length === 0) {
       await db.update('optimization_runs', runId, { status: 'Failed' });
       return res.status(400).json({ error: 'No open orders found' });
@@ -377,7 +380,7 @@ router.post('/optimize', async (req, res) => {
       mutationRate: mutation_rate, crossoverRate: crossover_rate
     });
     const result = await optimizer.optimize(orders, restrictions, components, penaltyRules);
-
+    console.log(result);
     let onTimeCount = 0, totalDelay = 0, maxDelay = 0;
 
     for (const order of orders) {
