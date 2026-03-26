@@ -25,6 +25,53 @@ router.post('/products', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+router.post('/products_bulk', async (req, res) => {
+  try {
+    const rows = req.body;
+
+    // ✅ Validate array
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({ error: 'Expected array of products' });
+    }
+
+    const validData = [];
+    const errors = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+
+      if (!row.product_code || !row.name) {
+        errors.push({ index: i, error: 'Missing product_code or name' });
+        continue;
+      }
+
+      validData.push({
+        id: uuidv4(),
+        product_code: row.product_code,
+        name: row.name,
+        description: row.description || '',
+        category: row.category || '',
+        unit_price: parseFloat(row.unit_price) || 0,
+        standard_cost: parseFloat(row.standard_cost) || 0,
+        lead_time_days: parseInt(row.lead_time_days) || 0,
+        is_active: row.is_active ?? true
+      });
+    }
+
+    // 🚀 BULK INSERT (IMPORTANT)
+    const result = await INSERT.into('ops_products').entries(validData);;
+
+    res.status(201).json({
+      inserted: validData.length,
+      failed: errors.length,
+      errors
+    });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.put('/products/:id', async (req, res) => {
   try { res.json(await db.update('products', req.params.id, req.body)); }
   catch (e) { res.status(500).json({ error: e.message }); }
@@ -44,6 +91,52 @@ router.get('/customers', async (req, res) => {
 router.post('/customers', async (req, res) => {
   try { res.status(201).json(await db.insert('customers', { ...req.body, id: uuidv4() })); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/customers_bulk', async (req, res) => {
+  try {
+    const rows = req.body;
+
+    // ✅ Validate array
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({ error: 'Expected array of customers' });
+    }
+
+    const validData = [];
+    const errors = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+
+      if (!row.customer_code || !row.name) {
+        errors.push({ index: i, error: 'Missing customer_code or name' });
+        continue;
+      }
+
+      validData.push({
+        id: uuidv4(),
+        customer_code: row.customer_code,
+        name: row.name,
+        priority: row.priority || '',
+        contact_person: row.contact_person || '',
+        email: row.email,
+        phone: row.phone,
+        is_active: row.is_active ?? true
+      });
+    }
+
+    // 🚀 BULK INSERT (IMPORTANT)
+    const result = await INSERT.into('ops_customers').entries(validData);
+
+    res.status(201).json({
+      inserted: validData.length,
+      failed: errors.length,
+      errors
+    });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.put('/customers/:id', async (req, res) => {
@@ -70,6 +163,53 @@ router.get('/restrictions', async (req, res) => {
 router.post('/restrictions', async (req, res) => {
   try { res.status(201).json(await db.insert('restrictions', { ...req.body, id: uuidv4() })); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/restrictions_bulk', async (req, res) => {
+  try {
+    const rows = req.body;
+
+    // ✅ Validate array
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({ error: 'Expected array of restrictions' });
+    }
+
+    const validData = [];
+    const errors = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+
+      if (!row.restriction_code || !row.name) {
+        errors.push({ index: i, error: 'Missing restrictions_code or name' });
+        continue;
+      }
+
+      validData.push({
+        id: uuidv4(),
+        restriction_code: row.restriction_code,
+        name: row.name,
+        description: row.description || '',
+        resource_type: row.resource_type || '',
+        valid_from: row.valid_from,
+        valid_to : row.valid_to,
+        penalty_cost_per_unit : row.penalty_cost_per_unit,
+        is_active: row.is_active ?? true
+      });
+    }
+
+    // 🚀 BULK INSERT (IMPORTANT)
+    const result = await INSERT.into('ops_restrictions').entries(validData);
+
+    res.status(201).json({
+      inserted: validData.length,
+      failed: errors.length,
+      errors
+    });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.put('/restrictions/:id', async (req, res) => {
@@ -120,6 +260,56 @@ router.post('/restrictions/:id/bulk-capacities', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+router.post('/weekly_capacities_bulk', async (req, res) => {
+  try {
+    const rows = req.body;
+
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({ error: 'Expected array' });
+    }
+
+    // 🔹 Prepare data
+    const data = rows.map(r => ({
+      id: uuidv4(),
+      restriction_id: r.restriction_id,
+      year: parseInt(r.year),
+      week: parseInt(r.week),
+      capacity: parseFloat(r.capacity) || 0
+    }));
+
+    // 🚀 MERGE queries (UPSERT)
+    const queries = data.map(d => `
+      MERGE INTO OPS_WEEKLY_CAPACITIES AS target
+      USING (
+        SELECT '${d.restriction_id}' AS restriction_id,
+               ${d.year} AS year,
+               ${d.week} AS week
+        FROM DUMMY
+      ) AS src
+      ON target.restriction_id = src.restriction_id
+         AND target.year = src.year
+         AND target.week = src.week
+
+      WHEN MATCHED THEN
+        UPDATE SET capacity = ${d.capacity}
+
+      WHEN NOT MATCHED THEN
+        INSERT (id, restriction_id, year, week, capacity)
+        VALUES ('${d.id}', '${d.restriction_id}', ${d.year}, ${d.week}, ${d.capacity});
+    `);
+
+    // 🔥 Execute in sequence (same as your pattern)
+    for (const q of queries) {
+      await db.runStmt(q);
+    }
+
+    res.json({ processed: data.length });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── COMPONENTS ───────────────────────────────────────────────────────────────
 router.get('/components', async (req, res) => {
   try {
@@ -134,6 +324,53 @@ router.get('/components', async (req, res) => {
 router.post('/components', async (req, res) => {
   try { res.status(201).json(await db.insert('components', { ...req.body, id: uuidv4() })); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/components_bulk', async (req, res) => {
+  try {
+    const rows = req.body;
+
+    // ✅ Validate array
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({ error: 'Expected array of components' });
+    }
+
+    const validData = [];
+    const errors = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+
+      if (!row.component_code || !row.name) {
+        errors.push({ index: i, error: 'Missing components_code or name' });
+        continue;
+      }
+
+      validData.push({
+        id: uuidv4(),
+        component_code: row.component_code,
+        name: row.name,
+        description: row.description || '',
+        supplier: row.supplier || '',
+        unit_cost : row.unit_cost,
+        lead_time_days : row.lead_time_days,
+        min_stock : row.min_stock,
+        is_active: row.is_active ?? true
+      });
+    }
+
+    // 🚀 BULK INSERT (IMPORTANT)
+    const result = await INSERT.into('ops_components').entries(validData);
+
+    res.status(201).json({
+      inserted: validData.length,
+      failed: errors.length,
+      errors
+    });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.put('/components/:id', async (req, res) => {
@@ -171,6 +408,48 @@ router.post('/components/:id/availability', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+router.post('/component_availability_bulk', async (req, res) => {
+  try {
+    const rows = req.body;
+
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({ error: 'Expected array' });
+    }
+
+    // Add IDs
+    const data = rows.map(r => ({
+      id: uuidv4(),
+      component_id: r.component_id,
+      year: r.year,
+      week: r.week,
+      available_qty: r.available_qty || 0,
+      reserved_qty: r.reserved_qty || 0
+    }));
+
+    // 🚀 HANA MERGE (UPSERT)
+    const queries = data.map(d => `
+      MERGE INTO OPS_COMPONENT_AVAILABILITY AS target
+      USING (SELECT '${d.component_id}' AS component_id, ${d.year} AS year, ${d.week} AS week FROM DUMMY) AS src
+      ON target.component_id = src.component_id AND target.year = src.year AND target.week = src.week
+      WHEN MATCHED THEN
+        UPDATE SET available_qty = ${d.available_qty}, reserved_qty = ${d.reserved_qty}
+      WHEN NOT MATCHED THEN
+        INSERT (id, component_id, year, week, available_qty, reserved_qty)
+        VALUES ('${d.id}', '${d.component_id}', ${d.year}, ${d.week}, ${d.available_qty}, ${d.reserved_qty});
+    `);
+
+    // ⚠️ Run in transaction
+    for (const q of queries) {
+      await db.runStmt(q);
+    }
+
+    res.json({ processed: data.length });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ─── PENALTY RULES ────────────────────────────────────────────────────────────
 router.get('/penalty-rules', async (req, res) => {
   try {
@@ -181,6 +460,50 @@ router.get('/penalty-rules', async (req, res) => {
 router.post('/penalty-rules', async (req, res) => {
   try { res.status(201).json(await db.insert('penalty_rules', { ...req.body, id: uuidv4() })); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/penalty_rules_bulk', async (req, res) => {
+  try {
+    const rows = req.body;
+
+    // ✅ Validate array
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({ error: 'Expected array of penalty rules' });
+    }
+
+    const validData = [];
+    const errors = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+
+      if (!row.rule_type || !row.customer_priority) {
+        errors.push({ index: i, error: 'Missing penalty rule or cusomter priority' });
+        continue;
+      }
+
+      validData.push({
+        id: uuidv4(),
+        rule_type: row.rule_type,
+        customer_priority: row.customer_priority,
+        // product_id: row.product_id || '',
+        penalty_per_day: row.penalty_per_day,
+        penalty_flat: row.penalty_flat,
+      });
+    }
+
+    // 🚀 BULK INSERT (IMPORTANT)
+    const result = await INSERT.into('ops_penalty_rules').entries(validData);
+
+    res.status(201).json({
+      inserted: validData.length,
+      failed: errors.length,
+      errors
+    });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.put('/penalty-rules/:id', async (req, res) => {
@@ -211,6 +534,57 @@ router.get('/sales-orders', async (req, res) => {
       LEFT JOIN products  p ON so.product_id  = p.id
       ORDER BY so.promise_date ASC`));
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/sales_orders_bulk', async (req, res) => {
+  try {
+    const rows = req.body;
+
+    // ✅ Validate array
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({ error: 'Expected array of penalty rules' });
+    }
+
+    const validData = [];
+    const errors = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+
+      if (!row.order_number || !row.customer_id || !row.product_id) {
+        errors.push({ index: i, error: 'Missing order number/customer/product code' });
+        continue;
+      }
+
+      validData.push({
+        id: uuidv4(),
+        order_number: row.order_number,
+        customer_id: row.customer_id,
+        product_id: row.product_id || '',
+        requested_date: row.requested_date,
+        promise_date: row.promise_date,
+            quantity: (row.quantity) || 1,
+            unit_price: (row.unit_price) || 0,
+            revenue: (row.revenue) || 0,
+            cost : (row.cost) ||0,
+            priority: row.priority || 'Medium',
+            status: row.status || 'Open',
+            notes: row.notes || ''
+      });
+    }
+
+    // 🚀 BULK INSERT (IMPORTANT)
+    const result = await INSERT.into('ops_sales_orders').entries(validData);
+
+    res.status(201).json({
+      inserted: validData.length,
+      failed: errors.length,
+      errors
+    });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.get('/sales-orders/:id', async (req, res) => {
