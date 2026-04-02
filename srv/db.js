@@ -542,7 +542,7 @@ let db;
 // ─────────────────────────────────────────────────────────
 async function getDb() {
   if (!db) {
-    db = await cds.connect.to('db');
+    db = await cds.connect.to('db1');
   }
   return db;
 }

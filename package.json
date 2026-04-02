@@ -29,9 +29,18 @@
   "private": true,
   "cds": {
     "requires": {
-      "db": {
-        "kind": "hana"
-      },
+     "db1": {
+      "kind": "hana",
+      "vcap": {
+        "name": "OrderBasedPlanning-db"
+      }
+    },
+    "db": {
+      "kind": "hana",
+      "vcap": {
+        "name": "config_products-db"
+      }
+    },
       "auth": "mocked",
       "connectivity": true,
       "destinations": true,

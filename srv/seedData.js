@@ -2,11 +2,14 @@
 const { v4: uuidv4 } = require('uuid');
 const moment = require('moment');
 const db = require('./db');
-
+// const cds = require('@sap/cds');
 async function seedData() {
   
   await db.clearAllData();
   console.log('Seeding sample data (Forklift manufacturer)...');
+  // const sf = await cds.connect.to('db');
+  //   const abc = await sf.run(SELECT.from('CP_LOCATION'));
+  //   console.log(abc);
 
   // ---- Customers ----
   const customers = [

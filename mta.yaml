@@ -18,6 +18,8 @@ modules:
   requires:
     - name: OrderBasedPlanning-db
     - name: uaa_OrderBasedPlanning
+    - name: config_products-db
+    - name: configprodoauth
   parameters:
     buildpack: nodejs_buildpack
     disk-quota: 512MB
@@ -120,6 +122,17 @@ resources:
   parameters:
     service: hana
     service-plan: hdi-shared
+
+- name: config_products-db
+  type: com.sap.xs.hdi-container
+  parameters:
+    service: hana
+    service-plan: hdi-shared    
+- name: configprodoauth
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: xsuaa
+    service-plan: application     
 
 # ------------------------------------------------------------
 # HTML5 APP REPO HOST
