@@ -1493,6 +1493,16 @@ Pages.seed = async () => {
   if (!confirm('This will clear ALL existing data and load sample forklift manufacturing data. Continue?')) return;
   try {
     const r = await api('POST', '/seed');
+    // Clear previous optimization results from the UI
+    const resultsSection = document.getElementById('opt-results-section');
+    if (resultsSection) { resultsSection.style.display = 'none'; }
+    const resultsContent = document.getElementById('opt-results-content');
+    if (resultsContent) { resultsContent.innerHTML = ''; }
+    const optProgress = document.getElementById('opt-progress');
+    if (optProgress) {
+      optProgress.innerHTML = '<div class="empty-state"><div class="empty-icon">🧬</div><div>Configure parameters and click<br><strong>Run Optimization</strong> to start</div></div>';
+    }
+    //End of clear previous optimization results.
     toast(`Sample data loaded: ${r.orders} orders, ${r.products} products, ${r.customers} customers`, 'success');
     navigate('dashboard');
   } catch(e) { toast(e.message,'error'); }
