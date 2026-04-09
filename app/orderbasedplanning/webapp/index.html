@@ -3235,6 +3235,22 @@ const IE = (() => {
           };
         }
 
+        else if (key === 'order_restrictions') {
+          obj = {
+            product_code: row.product_code,
+            restriction_code: row.restriction_code,
+            capacity_usage_per_unit: parseFloat(row.capacity_usage_per_unit) || 1
+          };
+        }
+
+        else if (key === 'order_components') {
+          obj = {
+            product_code: row.product_code,
+            component_code: row.component_code,
+            required_qty_per_unit: parseFloat(row.required_qty_per_unit) || parseFloat(row.required_usage_per_unit) || 1
+          };
+        }
+
         if (obj) payload.push(obj);
 
       } catch (e) {

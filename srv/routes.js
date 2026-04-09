@@ -7,7 +7,6 @@ const moment  = require('moment');
 const db      = require('./db');
 const { OrderPlanningOptimizer } = require('./optimizer');
 const { seedData }               = require('./seedData');
-
 const router = express.Router();
 
 // ─── PRODUCTS ────────────────────────────────────────────────────────────────
@@ -59,7 +58,8 @@ router.post('/products_bulk', async (req, res) => {
     }
 
     // 🚀 BULK INSERT (IMPORTANT)
-    const result = await INSERT.into('ops_products').entries(validData);;
+    const dbOBP = await cds.connect.to('db1');
+    const result = await dbOBP.run(INSERT.into('ops_products').entries(validData));
 
     res.status(201).json({
       inserted: validData.length,
@@ -126,7 +126,8 @@ router.post('/customers_bulk', async (req, res) => {
     }
 
     // 🚀 BULK INSERT (IMPORTANT)
-    const result = await INSERT.into('ops_customers').entries(validData);
+    const dbOBP = await cds.connect.to('db1');
+    const result = await dbOBP.run(INSERT.into('ops_customers').entries(validData));
 
     res.status(201).json({
       inserted: validData.length,
@@ -199,7 +200,8 @@ router.post('/restrictions_bulk', async (req, res) => {
     }
 
     // 🚀 BULK INSERT (IMPORTANT)
-    const result = await INSERT.into('ops_restrictions').entries(validData);
+    const dbOBP = await cds.connect.to('db1');
+    const result = await dbOBP.run(INSERT.into('ops_restrictions').entries(validData));
 
     res.status(201).json({
       inserted: validData.length,
@@ -360,7 +362,8 @@ router.post('/components_bulk', async (req, res) => {
     }
 
     // 🚀 BULK INSERT (IMPORTANT)
-    const result = await INSERT.into('ops_components').entries(validData);
+    const dbOBP = await cds.connect.to('db1');
+    const result = await dbOBP.run(INSERT.into('ops_components').entries(validData));
 
     res.status(201).json({
       inserted: validData.length,
@@ -493,7 +496,8 @@ router.post('/penalty_rules_bulk', async (req, res) => {
     }
 
     // 🚀 BULK INSERT (IMPORTANT)
-    const result = await INSERT.into('ops_penalty_rules').entries(validData);
+    const dbOBP = await cds.connect.to('db1');
+    const result = await dbOBP.run(INSERT.into('ops_penalty_rules').entries(validData));
 
     res.status(201).json({
       inserted: validData.length,
@@ -542,7 +546,7 @@ router.post('/sales_orders_bulk', async (req, res) => {
 
     // ✅ Validate array
     if (!Array.isArray(rows)) {
-      return res.status(400).json({ error: 'Expected array of penalty rules' });
+      return res.status(400).json({ error: 'Expected array of sales orders' });
     }
 
     const validData = [];
@@ -555,6 +559,8 @@ router.post('/sales_orders_bulk', async (req, res) => {
         errors.push({ index: i, error: 'Missing order number/customer/product code' });
         continue;
       }
+      const revenue= row.unit_price * row.quantity;
+      // const cost= rows.standard_cost * rows.quantity;
 
       validData.push({
         id: uuidv4(),
@@ -563,18 +569,19 @@ router.post('/sales_orders_bulk', async (req, res) => {
         product_id: row.product_id || '',
         requested_date: row.requested_date,
         promise_date: row.promise_date,
-            quantity: (row.quantity) || 1,
-            unit_price: (row.unit_price) || 0,
-            revenue: (row.revenue) || 0,
-            cost : (row.cost) ||0,
-            priority: row.priority || 'Medium',
-            status: row.status || 'Open',
-            notes: row.notes || ''
+        quantity: (row.quantity) || 1,
+        unit_price: (row.unit_price) || 0,
+        revenue: revenue || 0,
+        cost: (row.cost) || 0,
+        priority: row.priority || 'Medium',
+        status: row.status || 'Open',
+        notes: row.notes || ''
       });
     }
 
     // 🚀 BULK INSERT (IMPORTANT)
-    const result = await INSERT.into('ops_sales_orders').entries(validData);
+    const dbOBP = await cds.connect.to('db1');
+    const result = await dbOBP.run(INSERT.into('ops_sales_orders').entries(validData));
 
     res.status(201).json({
       inserted: validData.length,
@@ -711,6 +718,154 @@ router.delete('/sales-orders/:id/components/:cid', async (req, res) => {
       [req.params.id, req.params.cid]);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── ORDER RESTRICTIONS BULK ─────────────────────────────────────────────────
+// Accepts rows with product_code + restriction_code from Excel.
+// Resolves codes to IDs and creates order_restriction entries for all
+// sales orders matching each product_code.
+router.post('/order_restrictions_bulk', async (req, res) => {
+  try {
+    const rows = req.body;
+
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({ error: 'Expected array of order restrictions' });
+    }
+
+    // Build lookup maps: code → id
+    const allProducts = await db.queryAll(`SELECT id, product_code FROM OPS_PRODUCTS`);
+    const productByCode = {};
+    allProducts.forEach(p => { productByCode[p.product_code || p.PRODUCT_CODE] = p.id || p.ID; });
+
+    const allRestrictions = await db.queryAll(`SELECT id, restriction_code FROM OPS_RESTRICTIONS`);
+    const restrictionByCode = {};
+    allRestrictions.forEach(r => { restrictionByCode[r.restriction_code || r.RESTRICTION_CODE] = r.id || r.ID; });
+
+    // Get all sales orders grouped by product_id
+    const allOrders = await db.queryAll(`SELECT id, product_id FROM OPS_SALES_ORDERS`);
+    const ordersByProductId = {};
+    allOrders.forEach(o => {
+      const pid = o.product_id || o.PRODUCT_ID;
+      if (!ordersByProductId[pid]) ordersByProductId[pid] = [];
+      ordersByProductId[pid].push(o.id || o.ID);
+    });
+
+    const validData = [];
+    const errors = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+
+      if (!row.product_code || !row.restriction_code) {
+        errors.push({ index: i, error: 'Missing product_code or restriction_code' });
+        continue;
+      }
+
+      const productId = productByCode[row.product_code];
+      const restrictionId = restrictionByCode[row.restriction_code];
+
+      if (!productId) { errors.push({ index: i, error: `Unknown product_code: ${row.product_code}` }); continue; }
+      if (!restrictionId) { errors.push({ index: i, error: `Unknown restriction_code: ${row.restriction_code}` }); continue; }
+
+      const orderIds = ordersByProductId[productId] || [];
+      for (const salesOrderId of orderIds) {
+        validData.push({
+          id: uuidv4(),
+          sales_order_id: salesOrderId,
+          restriction_id: restrictionId,
+          capacity_usage_per_unit: row.capacity_usage_per_unit || 1
+        });
+      }
+    }
+
+    if (validData.length > 0) {
+      const dbOBP = await cds.connect.to('db1');
+      await dbOBP.run(INSERT.into('ops_order_restrictions').entries(validData));
+    }
+
+    res.status(201).json({
+      inserted: validData.length,
+      failed: errors.length,
+      errors
+    });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── ORDER COMPONENTS BULK ──────────────────────────────────────────────────
+// Accepts rows with product_code + component_code from Excel.
+// Resolves codes to IDs and creates order_component entries for all
+// sales orders matching each product_code.
+router.post('/order_components_bulk', async (req, res) => {
+  try {
+    const rows = req.body;
+
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({ error: 'Expected array of order components' });
+    }
+
+    // Build lookup maps: code → id
+    const allProducts = await db.queryAll(`SELECT id, product_code FROM OPS_PRODUCTS`);
+    const productByCode = {};
+    allProducts.forEach(p => { productByCode[p.product_code || p.PRODUCT_CODE] = p.id || p.ID; });
+
+    const allComponents = await db.queryAll(`SELECT id, component_code FROM OPS_COMPONENTS`);
+    const componentByCode = {};
+    allComponents.forEach(c => { componentByCode[c.component_code || c.COMPONENT_CODE] = c.id || c.ID; });
+
+    // Get all sales orders grouped by product_id
+    const allOrders = await db.queryAll(`SELECT id, product_id FROM OPS_SALES_ORDERS`);
+    const ordersByProductId = {};
+    allOrders.forEach(o => {
+      const pid = o.product_id || o.PRODUCT_ID;
+      if (!ordersByProductId[pid]) ordersByProductId[pid] = [];
+      ordersByProductId[pid].push(o.id || o.ID);
+    });
+
+    const validData = [];
+    const errors = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+
+      if (!row.product_code || !row.component_code) {
+        errors.push({ index: i, error: 'Missing product_code or component_code' });
+        continue;
+      }
+
+      const productId = productByCode[row.product_code];
+      const componentId = componentByCode[row.component_code];
+
+      if (!productId) { errors.push({ index: i, error: `Unknown product_code: ${row.product_code}` }); continue; }
+      if (!componentId) { errors.push({ index: i, error: `Unknown component_code: ${row.component_code}` }); continue; }
+
+      const orderIds = ordersByProductId[productId] || [];
+      for (const salesOrderId of orderIds) {
+        validData.push({
+          id: uuidv4(),
+          sales_order_id: salesOrderId,
+          component_id: componentId,
+          required_qty_per_unit: row.required_qty_per_unit || row.required_usage_per_unit || 1
+        });
+      }
+    }
+
+    if (validData.length > 0) {
+      const dbOBP = await cds.connect.to('db1');
+      await dbOBP.run(INSERT.into('ops_order_components').entries(validData));
+    }
+
+    res.status(201).json({
+      inserted: validData.length,
+      failed: errors.length,
+      errors
+    });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ─── OPTIMIZATION ─────────────────────────────────────────────────────────────
