@@ -480,6 +480,7 @@
       <div class="topbar-title" id="topbar-title">Dashboard</div>
       <div class="topbar-actions">
         <button class="btn btn-secondary btn-sm" onclick="Pages.seed()">🌱 Load Sample Data</button>
+        <button class="btn btn-secondary btn-sm" style="color:var(--red);border-color:var(--red);" onclick="Pages.clearData()">🗑 Clear Data</button>
         <button class="btn btn-primary btn-sm" onclick="navigate('optimize')">🧬 Run Optimization</button>
       </div>
     </div>
@@ -1504,6 +1505,24 @@ Pages.seed = async () => {
     }
     //End of clear previous optimization results.
     toast(`Sample data loaded: ${r.orders} orders, ${r.products} products, ${r.customers} customers`, 'success');
+    navigate('dashboard');
+  } catch(e) { toast(e.message,'error'); }
+};
+
+Pages.clearData = async () => {
+  if (!confirm('This will permanently delete ALL data from the system. This action cannot be undone. Continue?')) return;
+  try {
+    const r = await api('DELETE', '/clear-data');
+    // Clear previous optimization results from the UI
+    const resultsSection = document.getElementById('opt-results-section');
+    if (resultsSection) { resultsSection.style.display = 'none'; }
+    const resultsContent = document.getElementById('opt-results-content');
+    if (resultsContent) { resultsContent.innerHTML = ''; }
+    const optProgress = document.getElementById('opt-progress');
+    if (optProgress) {
+      optProgress.innerHTML = '<div class="empty-state"><div class="empty-icon">🧬</div><div>Configure parameters and click<br><strong>Run Optimization</strong> to start</div></div>';
+    }
+    toast('All data has been cleared successfully', 'success');
     navigate('dashboard');
   } catch(e) { toast(e.message,'error'); }
 };
