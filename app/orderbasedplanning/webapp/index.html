@@ -1300,6 +1300,7 @@ Pages.dashboard = async () => {
 Pages.products = async () => {
   try {
     _products = await api('GET', '/products');
+    _products.sort((a, b) => (a.lead_time_days || 0) - (b.lead_time_days || 0));
     const tbody = document.getElementById('tbody-products');
     if (!_products.length) { tbody.innerHTML = '<tr><td colspan="7" class="text-muted" style="text-align:center;padding:40px">No products yet. <a href="#" onclick="openModal(\'modal-product\')" style="color:var(--accent2)">Add one</a></td></tr>'; return; }
     tbody.innerHTML = _products.map(p => `
@@ -1319,6 +1320,7 @@ Pages.products = async () => {
 Pages.customers = async () => {
   try {
     _customers = await api('GET', '/customers');
+    _customers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     const tbody = document.getElementById('tbody-customers');
     if (!_customers.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:40px">No customers yet</td></tr>'; return; }
     tbody.innerHTML = _customers.map(c => `
