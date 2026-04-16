@@ -902,6 +902,28 @@ router.post('/optimize', async (req, res) => {
       return res.status(400).json({ error: 'No open orders found' });
     }
 
+    // ── Pre-validation: reject if ALL weekly capacities are 0 for any restriction ──
+    for (const restriction of restrictions) {
+      const caps = restriction.weekly_capacities || [];
+      if (caps.length === 0 || caps.every(c => Number(c.capacity) <= 0)) {
+        await db.update('optimization_runs', runId, { status: 'Failed' });
+        return res.status(400).json({
+          error: `Optimization rejected: Weekly capacity is 0 for all weeks for restriction "${restriction.restriction_name || restriction.restriction_code || restriction.id}". Please set valid capacity values before optimizing.`
+        });
+      }
+    }
+
+    // ── Pre-validation: reject if ALL component availability is 0 for any component ──
+    for (const component of components) {
+      const avails = component.availability || [];
+      if (avails.length === 0 || avails.every(a => Number(a.available_qty) <= 0)) {
+        await db.update('optimization_runs', runId, { status: 'Failed' });
+        return res.status(400).json({
+          error: `Optimization rejected: Component availability is 0 for all weeks for component "${component.component_name || component.component_code || component.id}". Please set valid availability values before optimizing.`
+        });
+      }
+    }
+
     await db.runStmt('UPDATE OPS_OPTIMIZATION_RUNS SET total_orders=? WHERE id=?', [orders.length, runId]);
 
     const optimizer = new OrderPlanningOptimizer({

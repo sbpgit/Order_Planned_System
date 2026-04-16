@@ -2159,6 +2159,36 @@ async function downloadOptimizationResults(runId, section) {
     }
 
     if (section === 'all') {
+      // Weekly_Schedule sheet — one row per (order × restriction × component)
+      const orderDetails = await Promise.all(
+        orders.map(o => api('GET', `/sales-orders/${o.sales_order_id}`).catch(() => null))
+      );
+      const schedRows = [];
+      orders.forEach((o, i) => {
+        const det = orderDetails[i] || {};
+        const rests = (det.restrictions && det.restrictions.length) ? det.restrictions : [{}];
+        const comps = (det.components && det.components.length) ? det.components : [{}];
+        const qty = Number(o.quantity || det.quantity || 0);
+        rests.forEach(r => {
+          comps.forEach(c => {
+            schedRows.push({
+              order_number: o.order_number,
+              product_name: o.product_name || det.product_name || '',
+              scheduled_date: o.optimized_date,
+              restriction: r.restriction_code ? `${r.restriction_name||''} (${r.restriction_code})` : '',
+              restriction_qty: r.capacity_usage_per_unit != null ? Number(r.capacity_usage_per_unit) * qty : '',
+              component: c.component_code ? `${c.component_name||''} (${c.component_code})` : '',
+              component_qty: c.required_qty_per_unit != null ? Number(c.required_qty_per_unit) * qty : ''
+            });
+          });
+        });
+      });
+      if (schedRows.length) {
+        const ws = XLSX.utils.json_to_sheet(schedRows);
+        ws['!cols'] = Object.keys(schedRows[0]).map(() => ({ wch: 22 }));
+        XLSX.utils.book_append_sheet(wb, ws, 'Weekly_Schedule');
+      }
+
       // Summary sheet
       const summaryData = [
         ['Run Number', run.run_number],
