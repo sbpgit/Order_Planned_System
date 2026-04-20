@@ -204,6 +204,7 @@ class OrderPlanningOptimizer {
     }
 
     // Calculate capacity violation penalties
+    const infeasibleOrderIds = new Set();
     for (const restriction of (restrictions || [])) {
       const restId = restriction.id;
       const usageByWeek = weeklyCapacityUsage[restId] || {};
@@ -213,11 +214,24 @@ class OrderPlanningOptimizer {
         const capEntry = (restriction.weekly_capacities || []).find(
           c => c.year === year && c.week === week
         );
-        const capacity = capEntry ? capEntry.capacity : 0;
+        const capacity = Number(capEntry ? capEntry.capacity : 0);
         const overCapacity = Math.max(0, usage - capacity);
 
         if (overCapacity > 0) {
-          totalPenalty += Number(overCapacity) * Number(restriction.penalty_cost_per_unit || 100);
+          if (capacity <= 0) {
+            // Hard constraint: capacity is 0 → massive penalty, mark orders as infeasible
+            totalPenalty += Number(overCapacity) * 1e9;
+            for (const order of orders) {
+              const placedWeek = this._getPlacedWeekKey(order, chromosome);
+              if (placedWeek !== weekKey) continue;
+              if ((order.restrictions || []).some(or => or.restriction_id === restId)) {
+                infeasibleOrderIds.add(order.id);
+              }
+            }
+          } else {
+            // Soft constraint: linear penalty per over-unit
+            totalPenalty += Number(overCapacity) * Number(restriction.penalty_cost_per_unit || 100);
+          }
         }
       }
     }
@@ -227,18 +241,30 @@ class OrderPlanningOptimizer {
       const compId = component.id;
       const usageByWeek = weeklyComponentUsage[compId] || {};
 
-      // Build cumulative availability map
+      // Build availability map
       const availMap = {};
       for (const avail of (component.availability || [])) {
         availMap[`${avail.year}-${avail.week}`] = Number(avail.available_qty);
       }
 
       for (const [weekKey, required] of Object.entries(usageByWeek)) {
-        const available = availMap[weekKey] || 0;
+        const available = Number(availMap[weekKey] || 0);
         const shortage = Math.max(0, Number(required) - available);
         if (shortage > 0) {
-          // No fulfillment penalty: 3x component cost per unit short
-          totalPenalty += Number(shortage) * Number(component.unit_cost || 10) * 3;
+          if (available <= 0) {
+            // Hard constraint: no availability → massive penalty, mark orders as infeasible
+            totalPenalty += Number(shortage) * 1e9;
+            for (const order of orders) {
+              const placedWeek = this._getPlacedWeekKey(order, chromosome);
+              if (placedWeek !== weekKey) continue;
+              if ((order.components || []).some(oc => oc.component_id === compId)) {
+                infeasibleOrderIds.add(order.id);
+              }
+            }
+          } else {
+            // Soft constraint: 3x component cost per unit short
+            totalPenalty += Number(shortage) * Number(component.unit_cost || 10) * 3;
+          }
         }
       }
     }
@@ -255,11 +281,20 @@ class OrderPlanningOptimizer {
         orderPenalties,
         weeklyCapacityUsage,
         weeklyComponentUsage,
+        infeasibleOrderIds: Array.from(infeasibleOrderIds),
         totalPenalty
       }
     };
   }
   
+  _getPlacedWeekKey(order, chromosome) {
+    const offset = chromosome[order.id] || 0;
+    const promiseWeekInfo = getWeekInfo(order.promise_date);
+    const targetDate = weekToDate(promiseWeekInfo.year, promiseWeekInfo.week).add(offset, 'weeks');
+    const { year, week } = getWeekInfo(targetDate.format('YYYY-MM-DD'));
+    return `${year}-${week}`;
+  }
+
   _calcLatePenalty(order, delayDays, penaltyMap) {
     const priority = order.priority || 'Medium';
     const productId = order.product_id;

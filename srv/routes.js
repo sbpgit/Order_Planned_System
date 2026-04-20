@@ -9,6 +9,32 @@ const { OrderPlanningOptimizer } = require('./optimizer');
 const { seedData }               = require('./seedData');
 const router = express.Router();
 
+// ─── OPTIMIZATION LOCK: block data mutations while an optimization is running ─
+async function isOptimizationRunning() {
+  try {
+    const row = await db.queryOne(
+      `SELECT COUNT(*) as cnt FROM OPS_OPTIMIZATION_RUNS WHERE status = 'Running'`
+    );
+    return row && Number(row.cnt) > 0;
+  } catch (e) { return false; }
+}
+
+async function guardDataMutation(req, res, next) {
+  // Only guard POST/PUT/DELETE, skip optimize endpoint itself and GET requests
+  if (req.method === 'GET') return next();
+  if (req.path === '/optimize') return next();
+  // Skip read-only post endpoints (exports, etc.) — none currently exist
+  try {
+    if (await isOptimizationRunning()) {
+      return res.status(423).json({
+        error: 'An optimization is currently running. Please wait for it to complete before modifying data.'
+      });
+    }
+  } catch (e) { /* if check fails, allow the request through */ }
+  next();
+}
+router.use(guardDataMutation);
+
 // ─── PRODUCTS ────────────────────────────────────────────────────────────────
 router.get('/products', async (req, res) => {
   try { res.json(await db.findAll('products', {}, 'name ASC')); }
@@ -934,21 +960,23 @@ router.post('/optimize', async (req, res) => {
     console.log(result);
     let onTimeCount = 0, totalDelay = 0, maxDelay = 0;
 
+    const infeasibleSet = new Set(result.details.infeasibleOrderIds || []);
     for (const order of orders) {
       const optimizedDate = result.bestSolution[order.id];
       const originalDate  = order.promise_date;
       const delayDays     = moment(optimizedDate).diff(moment(originalDate), 'days');
       const penaltyCost   = result.details.orderPenalties?.[order.id] || 0;
+      const isInfeasible  = infeasibleSet.has(order.id);
 
-      if (delayDays <= 0) onTimeCount++;
-      else { totalDelay += delayDays; maxDelay = Math.max(maxDelay, delayDays); }
+      if (!isInfeasible && delayDays <= 0) onTimeCount++;
+      else if (!isInfeasible) { totalDelay += delayDays; maxDelay = Math.max(maxDelay, delayDays); }
 
       await db.insert('optimization_results', {
         id: uuidv4(), run_id: runId, sales_order_id: order.id,
         original_date: originalDate, optimized_date: optimizedDate,
         delay_days: delayDays, penalty_cost: penaltyCost,
-        feasible: delayDays <= 28 ? 1 : 0,
-        status: delayDays <= 0 ? 'On Time' : `Delayed ${delayDays}d`
+        feasible: isInfeasible ? 0 : (delayDays <= 28 ? 1 : 0),
+        status: isInfeasible ? 'Infeasible' : (delayDays <= 0 ? 'On Time' : `Delayed ${delayDays}d`)
       });
     }
 
