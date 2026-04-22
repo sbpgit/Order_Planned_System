@@ -2167,7 +2167,7 @@ function renderOptimizationResults(result) {
     ...comps.filter(c=>c.is_critical).map(c=>({icon:'🔩',title:`${c.component_name} — Week ${c.week}/${c.year}`,detail:`Available: ${Math.round(c.available||0)}, Required: ${Math.round(c.required||0)}, Shortage: ${Math.round(c.shortage||0)} units`,cost:c.shortage_cost||0})),
     ...orders.filter(o=>o.delay_days>0).map(o=>({icon:'📋',title:`Order ${o.order_number} — ${o.customer_name||''} (${o.priority})`,detail:`${o.product_name||''} · Promise: ${fmt.date(o.original_date)} → Optimized: ${fmt.date(o.optimized_date)} · Delay: +${o.delay_days} days`,cost:o.penalty_cost||0}))
   ].sort((a,b)=>b.cost-a.cost);
-  const totalCost = allViol.reduce((a,v)=>a+v.cost,0);
+  const totalCost = allViol.reduce((a,v)=>a+Number(v.cost||0),0);
 
   const constraintsTabHtml = `<div id="tab-constraints" style="display:none">${allViol.length===0
     ?`<div class="card"><div class="card-body" style="text-align:center;padding:40px"><div style="font-size:48px;margin-bottom:12px">✅</div><div style="font-size:16px;font-weight:700;color:var(--green)">No Constraints Violated</div><div class="text-muted text-sm" style="margin-top:8px">All orders on-time within all capacity and component limits</div></div></div>`
