@@ -1,5 +1,5 @@
 ### Get sample data
-POST   http://localhost:4004/api/seed
+POST   http://localhost:4004/api/seedData('1600)
 Content-Type: application/json
 
 {
@@ -17,6 +17,16 @@ Content-Type: application/json
     "generations": 120,
     "mutation_rate": 0.1,
     "population_size": 60  
+
+}
+
+
+### Get restrictions
+GET   http://localhost:4004/api/restrictions
+Content-Type: application/json
+
+{
+	  
 
 }
 

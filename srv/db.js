@@ -564,7 +564,8 @@ const TABLE_MAP = {
   optimization_runs      : 'OPS_OPTIMIZATION_RUNS',
   optimization_results   : 'OPS_OPTIMIZATION_RESULTS',
   capacity_analysis      : 'OPS_CAPACITY_ANALYSIS',
-  component_analysis     : 'OPS_COMPONENT_ANALYSIS'
+  component_analysis     : 'OPS_COMPONENT_ANALYSIS',
+  optimization_gen_log   : 'OPS_OPTIMIZATION_GEN_LOG'
 };
 
 function _tbl(name) {
@@ -591,8 +592,8 @@ function normalizeRow(row) {
 }
 async function queryAll(sql, params = []) {
   const db = await getDb();
-  console.log("SQL:", _remapSql(sql));
-console.log("PARAMS:", params);
+//   console.log("SQL:", _remapSql(sql));
+// console.log("PARAMS:", params);
   const rows = await db.run(_remapSql(sql), params);
   return rows.map(normalizeRow);
 }
@@ -726,7 +727,15 @@ async function count(table, where = {}) {
 // Composite queries
 // ─────────────────────────────────────────────────────────
 
-async function getOrdersWithDetails() {
+async function getOrdersWithDetails(locationId, dateFrom, dateTo) {
+  const conditions = [];
+  const params = [];
+
+  if (locationId) { conditions.push('so.location_id = ?'); params.push(locationId); }
+  if (dateFrom)   { conditions.push('so.promise_date >= ?'); params.push(dateFrom); }
+  if (dateTo)     { conditions.push('so.promise_date <= ?'); params.push(dateTo); }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
   const orders = await queryAll(`
     SELECT so.*,
@@ -736,11 +745,11 @@ async function getOrdersWithDetails() {
     FROM sales_orders so
     LEFT JOIN customers c ON so.customer_id = c.id
     LEFT JOIN products  p ON so.product_id = p.id
+    ${where}
     ORDER BY so.promise_date ASC, so.priority ASC, c.priority ASC
-  `);
+  `, params);
 
   for (const order of orders) {
-
     order.restrictions = await queryAll(`
       SELECT or2.*, r.name AS restriction_name
       FROM order_restrictions or2
@@ -758,8 +767,10 @@ async function getOrdersWithDetails() {
 
   return orders;
 }
-async function getRestrictionsWithCapacity() {
-  const restrictions = await findAll('restrictions', { is_active: true });
+
+async function getRestrictionsWithCapacity(locationId) {
+  const where = locationId ? { is_active: true, location_id: locationId } : { is_active: true };
+  const restrictions = await findAll('restrictions', where);
   for (const r of restrictions) {
     r.weekly_capacities = await queryAll(
       `SELECT * FROM weekly_capacities WHERE restriction_id = ? ORDER BY year, week`, [r.id]
@@ -768,8 +779,9 @@ async function getRestrictionsWithCapacity() {
   return restrictions;
 }
 
-async function getComponentsWithAvailability() {
-  const components = await findAll('components', { is_active: true });
+async function getComponentsWithAvailability(locationId) {
+  const where = locationId ? { is_active: true, location_id: locationId } : { is_active: true };
+  const components = await findAll('components', where);
   for (const c of components) {
     c.availability = await queryAll(
       `SELECT * FROM component_availability WHERE component_id = ? ORDER BY year, week`, [c.id]
@@ -778,28 +790,45 @@ async function getComponentsWithAvailability() {
   return components;
 }
 
-async function clearAllData() {
+async function bulkInsert(table, rows) {
+  if (!rows || rows.length === 0) return;
+  const tbl = _tbl(table);
+  const dbConn = await getDb();
+  const { INSERT } = cds.ql;
+  await dbConn.run(INSERT.into(tbl).entries(rows));
+}
 
-  const tables = [
-    'component_analysis',
-    'capacity_analysis',
-    'optimization_results',
-    'optimization_runs',
-    'order_components',
-    'order_restrictions',
-    'sales_orders',
-    'component_availability',
-    'weekly_capacities',
-    'penalty_rules',
-    'customers',
-    'components',
-    'restrictions',
-    'products'
-  ];
+async function deleteAll(table) {
+  await runStmt(`DELETE FROM "${_tbl(table)}"`);
+}
 
-  for (const t of tables) {
-    await runStmt(`DELETE FROM "${_tbl(t)}"`);
+async function clearAllData(locationId) {
+  if (!locationId) {
+    const tables = [
+      'component_analysis', 'capacity_analysis', 'optimization_results', 'optimization_runs',
+      'order_components', 'order_restrictions', 'sales_orders', 'component_availability',
+      'weekly_capacities', 'penalty_rules', 'customers', 'components', 'restrictions', 'products'
+    ];
+    for (const t of tables) await runStmt(`DELETE FROM "${_tbl(t)}"`);
+    return;
   }
+  // await runStmt(`DELETE FROM "${_tbl('products')}"`);
+  // await runStmt(`DELETE FROM "${_tbl('customers')}"`);
+  // Delete child tables via subquery on parent's location_id
+  await runStmt(`DELETE FROM "${_tbl('optimization_gen_log')}" WHERE "RUN_ID" IN (SELECT "ID" FROM "${_tbl('optimization_runs')}" WHERE "LOCATION_ID" = ?)`, [locationId]);
+  await runStmt(`DELETE FROM "${_tbl('component_analysis')}" WHERE "RUN_ID" IN (SELECT "ID" FROM "${_tbl('optimization_runs')}" WHERE "LOCATION_ID" = ?)`, [locationId]);
+  await runStmt(`DELETE FROM "${_tbl('capacity_analysis')}" WHERE "RUN_ID" IN (SELECT "ID" FROM "${_tbl('optimization_runs')}" WHERE "LOCATION_ID" = ?)`, [locationId]);
+  await runStmt(`DELETE FROM "${_tbl('optimization_results')}" WHERE "RUN_ID" IN (SELECT "ID" FROM "${_tbl('optimization_runs')}" WHERE "LOCATION_ID" = ?)`, [locationId]);
+  await runStmt(`DELETE FROM "${_tbl('order_components')}" WHERE "SALES_ORDER_ID" IN (SELECT "ID" FROM "${_tbl('sales_orders')}" WHERE "LOCATION_ID" = ?)`, [locationId]);
+  await runStmt(`DELETE FROM "${_tbl('order_restrictions')}" WHERE "SALES_ORDER_ID" IN (SELECT "ID" FROM "${_tbl('sales_orders')}" WHERE "LOCATION_ID" = ?)`, [locationId]);
+  await runStmt(`DELETE FROM "${_tbl('component_availability')}" WHERE "COMPONENT_ID" IN (SELECT "ID" FROM "${_tbl('components')}" WHERE "LOCATION_ID" = ?)`, [locationId]);
+  await runStmt(`DELETE FROM "${_tbl('weekly_capacities')}" WHERE "RESTRICTION_ID" IN (SELECT "ID" FROM "${_tbl('restrictions')}" WHERE "LOCATION_ID" = ?)`, [locationId]);
+
+  // Delete location-specific parent tables (products/customers/penalty_rules are shared, not deleted here)
+  await runStmt(`DELETE FROM "${_tbl('optimization_runs')}" WHERE "LOCATION_ID" = ?`, [locationId]);
+  await runStmt(`DELETE FROM "${_tbl('sales_orders')}" WHERE "LOCATION_ID" = ?`, [locationId]);
+  await runStmt(`DELETE FROM "${_tbl('components')}" WHERE "LOCATION_ID" = ?`, [locationId]);
+  await runStmt(`DELETE FROM "${_tbl('restrictions')}" WHERE "LOCATION_ID" = ?`, [locationId]);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -816,6 +845,6 @@ module.exports = {
   remove,
   removeWhere,
   count,
-  getOrdersWithDetails,getRestrictionsWithCapacity,getComponentsWithAvailability,
-  clearAllData
+  getOrdersWithDetails, getRestrictionsWithCapacity, getComponentsWithAvailability,
+  clearAllData, deleteAll, bulkInsert
 };

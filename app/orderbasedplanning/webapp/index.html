@@ -418,8 +418,10 @@
   .btn-excel:hover { background: rgba(34,197,94,0.2); }
 
 </style>
-<!-- SheetJS for Excel import/export -->
+<!-- SheetJS for Excel import (reading uploaded files) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- ExcelJS for styled Excel export -->
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 </head>
 <body>
 
@@ -479,7 +481,14 @@
     <div class="topbar">
       <div class="topbar-title" id="topbar-title">Dashboard</div>
       <div class="topbar-actions">
-        <button class="btn btn-secondary btn-sm" onclick="Pages.seed()">🌱 Load Sample Data</button>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:13px;">📍</span>
+          <select id="topbar-location-select" onchange="onTopbarLocationChange(this.value)"
+            style="font-size:12px;font-weight:600;color:var(--accent2);background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.3);border-radius:6px;padding:4px 8px;cursor:pointer;outline:none;max-width:220px">
+            <option value="">Select location…</option>
+          </select>
+        </div>
+        <button id="btn-seed" class="btn btn-secondary btn-sm" onclick="Pages.seed()">🌱 Load Data</button>
         <button class="btn btn-secondary btn-sm" style="color:var(--red);border-color:var(--red);" onclick="Pages.clearData()">🗑 Clear Data</button>
         <button class="btn btn-primary btn-sm" onclick="navigate('optimize')">🧬 Run Optimization</button>
       </div>
@@ -504,12 +513,26 @@
         </div>
         <div class="two-col">
           <div class="card">
-            <div class="card-header"><div class="card-title">⚙️ Capacity Status</div></div>
-            <div class="card-body" id="dash-capacity">Loading...</div>
+            <div class="card-header">
+              <div class="card-title">⚙️ Capacity Status</div>
+              <div class="flex items-center gap-2">
+                <input type="text" id="dash-cap-search" placeholder="Search…" oninput="filterDashCapacity(this.value)"
+                  style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);font-size:13px;width:150px">
+                <span id="dash-capacity-count" style="font-size:12px;font-weight:600;background:var(--bg4);color:var(--text2);padding:2px 8px;border-radius:10px;"></span>
+              </div>
+            </div>
+            <div class="card-body" id="dash-capacity" style="max-height:calc(100vh - 350px);min-height:120px;overflow-y:auto;">Loading...</div>
           </div>
           <div class="card">
-            <div class="card-header"><div class="card-title">🔩 Component Status</div></div>
-            <div class="card-body" id="dash-components">Loading...</div>
+            <div class="card-header">
+              <div class="card-title">🔩 Component Status</div>
+              <div class="flex items-center gap-2">
+                <input type="text" id="dash-comp-search" placeholder="Search…" oninput="filterDashComponents(this.value)"
+                  style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);font-size:13px;width:150px">
+                <span id="dash-components-count" style="font-size:12px;font-weight:600;background:var(--bg4);color:var(--text2);padding:2px 8px;border-radius:10px;"></span>
+              </div>
+            </div>
+            <div class="card-body" id="dash-components" style="max-height:calc(100vh - 350px);min-height:120px;overflow-y:auto;">Loading...</div>
           </div>
         </div>
       </div>
@@ -518,7 +541,12 @@
       <div id="page-products" class="page">
         <div class="section-header">
           <div><div class="section-title">Products</div><div class="section-sub">Forklift product catalog</div></div>
-          <button class="btn btn-primary" onclick="openModal('modal-product')">+ Add Product</button>
+          <div class="flex items-center gap-2">
+            <input type="text" id="products-search" placeholder="Search…" oninput="filterProducts(this.value)"
+              style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);font-size:13px;width:180px">
+            <span id="products-count" style="font-size:12px;font-weight:600;background:var(--bg4);color:var(--text2);padding:2px 8px;border-radius:10px;"></span>
+            <button class="btn btn-primary" onclick="openModal('modal-product')">+ Add Product</button>
+          </div>
         </div>
         <div class="card">
           <div class="card-body" style="padding:0">
@@ -536,7 +564,12 @@
       <div id="page-customers" class="page">
         <div class="section-header">
           <div><div class="section-title">Customers</div><div class="section-sub">Customer master data</div></div>
-          <button class="btn btn-primary" onclick="openModal('modal-customer')">+ Add Customer</button>
+          <div class="flex items-center gap-2">
+            <input type="text" id="customers-search" placeholder="Search…" oninput="filterCustomers(this.value)"
+              style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);font-size:13px;width:180px">
+            <span id="customers-count" style="font-size:12px;font-weight:600;background:var(--bg4);color:var(--text2);padding:2px 8px;border-radius:10px;"></span>
+            <button class="btn btn-primary" onclick="openModal('modal-customer')">+ Add Customer</button>
+          </div>
         </div>
         <div class="card">
           <div class="card-body" style="padding:0">
@@ -554,7 +587,12 @@
       <div id="page-restrictions" class="page">
         <div class="section-header">
           <div><div class="section-title">Restrictions</div><div class="section-sub">Production capacity constraints</div></div>
-          <button class="btn btn-primary" onclick="openModal('modal-restriction')">+ Add Restriction</button>
+          <div class="flex items-center gap-2">
+            <input type="text" id="restrictions-search" placeholder="Search…" oninput="filterRestrictions(this.value)"
+              style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);font-size:13px;width:180px">
+            <span id="restrictions-count" style="font-size:12px;font-weight:600;background:var(--bg4);color:var(--text2);padding:2px 8px;border-radius:10px;"></span>
+            <button class="btn btn-primary" onclick="openModal('modal-restriction')">+ Add Restriction</button>
+          </div>
         </div>
         <div id="restrictions-list"></div>
       </div>
@@ -628,7 +666,12 @@
       <div id="page-components" class="page">
         <div class="section-header">
           <div><div class="section-title">Components</div><div class="section-sub">Component inventory & availability</div></div>
-          <button class="btn btn-primary" onclick="openModal('modal-component')">+ Add Component</button>
+          <div class="flex items-center gap-2">
+            <input type="text" id="components-search" placeholder="Search…" oninput="filterComponents(this.value)"
+              style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);font-size:13px;width:180px">
+            <span id="components-count" style="font-size:12px;font-weight:600;background:var(--bg4);color:var(--text2);padding:2px 8px;border-radius:10px;"></span>
+            <button class="btn btn-primary" onclick="openModal('modal-component')">+ Add Component</button>
+          </div>
         </div>
         <div id="components-list"></div>
       </div>
@@ -663,7 +706,7 @@
           </div>
         </div>
 
-        <!-- Upload from Excel -->
+<!-- Upload from Excel -->
         <div class="card mb-4">
           <div class="card-header"><div class="card-title">📤 Upload Availability from Excel</div></div>
           <div class="card-body">
@@ -705,7 +748,12 @@
       <div id="page-penalties" class="page">
         <div class="section-header">
           <div><div class="section-title">Penalty Rules</div><div class="section-sub">Late delivery & no-fulfillment penalties</div></div>
-          <button class="btn btn-primary" onclick="openModal('modal-penalty')">+ Add Rule</button>
+          <div class="flex items-center gap-2">
+            <input type="text" id="penalties-search" placeholder="Search…" oninput="filterPenalties(this.value)"
+              style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);font-size:13px;width:180px">
+            <span id="penalties-count" style="font-size:12px;font-weight:600;background:var(--bg4);color:var(--text2);padding:2px 8px;border-radius:10px;"></span>
+            <button class="btn btn-primary" onclick="openModal('modal-penalty')">+ Add Rule</button>
+          </div>
         </div>
         <div class="card">
           <div class="card-body" style="padding:0">
@@ -723,7 +771,12 @@
       <div id="page-orders" class="page">
         <div class="section-header">
           <div><div class="section-title">Sales Orders</div><div class="section-sub">Open and confirmed orders</div></div>
-          <button class="btn btn-primary" onclick="openModal('modal-order')">+ New Order</button>
+          <div class="flex items-center gap-2">
+            <input type="text" id="orders-search" placeholder="Search…" oninput="filterOrders(this.value)"
+              style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);font-size:13px;width:180px">
+            <span id="orders-count" style="font-size:12px;font-weight:600;background:var(--bg4);color:var(--text2);padding:2px 8px;border-radius:10px;"></span>
+            <button class="btn btn-primary" onclick="openOrderModal()">+ New Order</button>
+          </div>
         </div>
         <div class="card">
           <div class="card-body" style="padding:0">
@@ -746,18 +799,30 @@
           <div class="card">
             <div class="card-header"><div class="card-title">⚙️ Parameters</div></div>
             <div class="card-body">
-              <div class="form-grid">
+              <!-- Shared fields -->
+              <div class="form-grid" style="margin-bottom:12px">
                 <div class="form-group">
                   <label>Description</label>
                   <input type="text" id="opt-desc" value="Planning Run" placeholder="Optimization description">
                 </div>
                 <div class="form-group">
-                  <label>Population Size</label>
-                  <input type="number" id="opt-pop" value="60" min="10" max="200">
+                  <label>Location ID</label>
+                  <input type="text" id="opt-location-id" placeholder="Auto-filled from loaded data" readonly style="background:var(--bg3);cursor:default">
                 </div>
                 <div class="form-group">
-                  <label>Generations</label>
-                  <input type="number" id="opt-gen" value="120" min="10" max="500">
+                  <label>Promise Date From <span class="text-xs text-muted">(optional)</span></label>
+                  <input type="date" id="opt-date-from">
+                </div>
+                <div class="form-group">
+                  <label>Promise Date To <span class="text-xs text-muted">(optional)</span></label>
+                  <input type="date" id="opt-date-to">
+                </div>
+              </div>
+              <!-- Shared GA parameters -->
+              <div class="form-grid" style="margin-bottom:12px">
+                <div class="form-group">
+                  <label>Population Size</label>
+                  <input type="number" id="opt-pop" value="60" min="10" max="200">
                 </div>
                 <div class="form-group">
                   <label>Mutation Rate</label>
@@ -768,12 +833,31 @@
                   <input type="number" id="opt-cross" value="0.8" step="0.01" min="0" max="1">
                 </div>
               </div>
+              <!-- Termination mode tabs -->
+              <div class="tabs" style="margin-bottom:12px">
+                <button class="tab active" id="opt-tab-gen" onclick="switchOptTab('gen')">Generations</button>
+                <button class="tab" id="opt-tab-time" onclick="switchOptTab('time')">Time-Based</button>
+              </div>
+              <!-- Tab: Generations -->
+              <div id="opt-panel-gen" class="form-grid">
+                <div class="form-group">
+                  <label>Generations</label>
+                  <input type="number" id="opt-gen" value="120" min="10" max="500">
+                </div>
+              </div>
+              <!-- Tab: Time-Based -->
+              <div id="opt-panel-time" class="form-grid" style="display:none">
+                <div class="form-group">
+                  <label>Time Limit (hrs)</label>
+                  <input type="number" id="opt-time-hrs" value="0.5" step="0.1" min="0.1" max="24">
+                </div>
+              </div>
               <div class="divider"></div>
               <div style="background:var(--bg3);padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:16px">
                 <div class="text-xs text-muted" style="margin-bottom:6px">ALGORITHM INFO</div>
-                <div class="text-sm">The genetic algorithm evaluates <strong>all open sales orders</strong> and finds optimal confirmation dates that minimize:</div>
+                <div class="text-sm">The genetic algorithm evaluates <strong>open sales orders</strong> (filtered by promise date range if set) and finds optimal confirmation dates that minimize:</div>
                 <ul style="margin-top:8px;margin-left:16px;color:var(--text2);font-size:13px;line-height:1.8">
-                  <li>Late delivery penalties (by customer priority)</li>
+                  <li>Late delivery penalties (by order priority)</li>
                   <li>Capacity restriction violations</li>
                   <li>Component shortage penalties</li>
                 </ul>
@@ -790,6 +874,20 @@
                 <div class="empty-icon">🧬</div>
                 <div>Configure parameters and click<br><strong>Run Optimization</strong> to start</div>
               </div>
+            </div>
+          </div>
+        </div>
+        <!-- Live fitness chart — shown during and after optimization -->
+        <div id="opt-fitness-card" class="card" style="display:none;margin-bottom:24px">
+          <div class="card-header">
+            <div class="card-title">📉 Fitness Convergence</div>
+            <span id="opt-fitness-gen-label" class="text-xs text-muted"></span>
+          </div>
+          <div class="card-body" style="padding:8px 16px 16px">
+            <div id="opt-fitness-chart"></div>
+            <div style="display:flex;gap:16px;margin-top:8px;font-size:11px">
+              <span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:20px;height:2px;background:var(--accent)"></span> Best Fitness</span>
+              <span style="display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:20px;height:2px;background:var(--text3)"></span> Avg Fitness</span>
             </div>
           </div>
         </div>
@@ -927,6 +1025,27 @@
 </div><!-- /app -->
 
 <!-- ===== MODALS ===== -->
+<!-- Location Picker Modal -->
+<div class="modal-overlay" id="modal-location">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Select Location</div>
+      <button id="modal-location-close" class="modal-close" onclick="closeModal('modal-location')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="modal-location-desc" class="text-sm text-muted mb-2">All data will be loaded for the selected location only.</p>
+      <div class="form-group">
+        <label>Location</label>
+        <select id="location-select" style="width:100%"><option value="">Loading locations…</option></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button id="modal-location-cancel" class="btn btn-secondary" onclick="closeModal('modal-location')">Cancel</button>
+      <button id="modal-location-confirm" class="btn btn-primary" onclick="confirmLocationAndSeed()">Load Data</button>
+    </div>
+  </div>
+</div>
+
 <!-- Add Capacity Week Modal -->
 <div id="modal-add-capacity" class="modal-overlay" style="display:none">
   <div class="modal" style="max-width:420px">
@@ -1163,6 +1282,19 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-order-detail">
+  <div class="modal" style="max-width:900px">
+    <div class="modal-header">
+      <div class="modal-title" id="order-detail-title">Order Detail</div>
+      <button class="modal-close" onclick="closeModal('modal-order-detail')">✕</button>
+    </div>
+    <div class="modal-body" id="order-detail-body">Loading...</div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-order-detail')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 
 <script>
@@ -1217,6 +1349,7 @@ function navigate(page) {
     components: Pages.components,
     penalties: Pages.penalties,
     orders: Pages.orders,
+    optimize: Pages.optimize,
     results: Pages.results,
     importexport: () => {}
   };
@@ -1225,7 +1358,6 @@ function navigate(page) {
     if (n.getAttribute('onclick') === `navigate('${page}')`) n.classList.add('active');
   });
   document.getElementById('topbar-title').textContent = pageTitles[page] || page;
-  if (Pages[page]) Pages[page]();
 }
 
 // ===== Modal helpers =====
@@ -1240,6 +1372,7 @@ function closeModal(id) {
 const fmt = {
   currency: v => v != null ? '$' + Number(v).toLocaleString('en-US', {maximumFractionDigits:0}) : '—',
   date: d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—',
+  week: d => { if (!d) return '—'; const {week, year} = isoWeekYear(new Date(d+'T00:00:00')); return `W${week}/${year}`; },
   pct: v => v != null ? Number(v).toFixed(1) + '%' : '—',
   num: v => v != null ? Number(v).toLocaleString() : '—',
   priorityBadge: p => `<span class="badge badge-${(p||'').toLowerCase()}">${p||'—'}</span>`,
@@ -1252,10 +1385,58 @@ const fmt = {
 // ===== Pages =====
 const Pages = {};
 let _products = [], _customers = [], _restrictions = [], _components = [];
+let _currentLocationId = '';
+
+function locPath(path) {
+  return _currentLocationId ? `${path}?locationId=${_currentLocationId}` : path;
+}
+
+let _dashCapacity = [];
+let _dashComponents = [];
+
+function renderDashCapacity(filter) {
+  const q = filter.trim().toLowerCase();
+  const all = [..._dashCapacity].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const rows = q ? all.filter(c => (c.name||'').toLowerCase().includes(q) || (c.restriction_code||'').toLowerCase().includes(q)) : all;
+  document.getElementById('dash-capacity-count').textContent = q ? `${rows.length}/${_dashCapacity.length}` : _dashCapacity.length;
+  document.getElementById('dash-capacity').innerHTML = rows.map(c => `
+    <div style="margin-bottom:12px">
+      <div class="flex justify-between" style="margin-bottom:4px">
+        <span style="font-size:13px">${c.name}</span>
+        <span class="mono text-xs text-muted">${c.restriction_code}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text3)">Avg capacity: ${Math.round(c.avg_capacity||0)} units/week · ${c.week_count} weeks planned</div>
+    </div>
+  `).join('') || '<div class="text-muted text-sm">No matching restrictions</div>';
+}
+function filterDashCapacity(val) { renderDashCapacity(val); }
+
+function renderDashComponents(filter) {
+  const q = filter.trim().toLowerCase();
+  const riskOrder = { High: 0, Medium: 1, Low: 2 };
+  const all = [..._dashComponents].sort((a, b) => (riskOrder[a.shortage_risk] ?? 3) - (riskOrder[b.shortage_risk] ?? 3));
+  const rows = q ? all.filter(c => (c.name||'').toLowerCase().includes(q) || (c.component_code||'').toLowerCase().includes(q)) : all;
+  document.getElementById('dash-components-count').textContent = q ? `${rows.length}/${_dashComponents.length}` : _dashComponents.length;
+  document.getElementById('dash-components').innerHTML = rows.map(c => {
+    const risk = c.shortage_risk;
+    const cls = risk === 'High' ? 'critical' : risk === 'Medium' ? 'warning' : 'ok';
+    return `<div class="flex justify-between items-center" style="margin-bottom:10px">
+      <div>
+        <div style="font-size:13px">${c.name}</div>
+        <div class="mono text-xs text-muted">${c.component_code}</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span style="font-size:12px;color:var(--text3)">${fmt.num(c.total_available)} avail.</span>
+        <span class="badge badge-${cls}">${risk} risk</span>
+      </div>
+    </div>`;
+  }).join('') || '<div class="text-muted text-sm">No matching components</div>';
+}
+function filterDashComponents(val) { renderDashComponents(val); }
 
 Pages.dashboard = async () => {
   try {
-    const d = await api('GET', '/dashboard');
+    const d = await api('GET', locPath('/dashboard'));
     document.getElementById('kpi-orders').textContent = d.total_orders;
     document.getElementById('kpi-orders-sub').textContent = `${d.confirmed_orders} confirmed`;
     document.getElementById('kpi-open').textContent = d.open_orders;
@@ -1266,73 +1447,76 @@ Pages.dashboard = async () => {
     document.getElementById('kpi-lastrun').textContent = lr ? lr.run_number : 'None';
     document.getElementById('kpi-lastrun-sub').textContent = lr ? `${lr.status} · ${fmt.pct(lr.on_time_percentage)} on-time` : 'No runs yet';
 
-    // Capacity
-    const capHtml = d.capacity_status.map(c => `
-      <div style="margin-bottom:12px">
-        <div class="flex justify-between" style="margin-bottom:4px">
-          <span style="font-size:13px">${c.name}</span>
-          <span class="mono text-xs text-muted">${c.restriction_code}</span>
-        </div>
-        <div style="font-size:12px;color:var(--text3)">Avg capacity: ${Math.round(c.avg_capacity||0)} units/week · ${c.week_count} weeks planned</div>
-      </div>
-    `).join('') || '<div class="text-muted text-sm">No restrictions configured</div>';
-    document.getElementById('dash-capacity').innerHTML = capHtml;
-
-    // Components
-    const compHtml = d.component_status.map(c => {
-      const risk = c.shortage_risk;
-      const cls = risk === 'High' ? 'critical' : risk === 'Medium' ? 'warning' : 'ok';
-      return `<div class="flex justify-between items-center" style="margin-bottom:10px">
-        <div>
-          <div style="font-size:13px">${c.name}</div>
-          <div class="mono text-xs text-muted">${c.component_code}</div>
-        </div>
-        <div class="flex items-center gap-2">
-          <span style="font-size:12px;color:var(--text3)">${fmt.num(c.total_available)} avail.</span>
-          <span class="badge badge-${cls}">${risk} risk</span>
-        </div>
-      </div>`;
-    }).join('') || '<div class="text-muted text-sm">No components configured</div>';
-    document.getElementById('dash-components').innerHTML = compHtml;
+    _dashCapacity = d.capacity_status || [];
+    _dashComponents = d.component_status || [];
+    const capSearch = document.getElementById('dash-cap-search');
+    const compSearch = document.getElementById('dash-comp-search');
+    if (capSearch) capSearch.value = '';
+    if (compSearch) compSearch.value = '';
+    renderDashCapacity('');
+    renderDashComponents('');
   } catch (e) { toast(e.message, 'error'); }
 };
+
+function renderProductsList(filter) {
+  const q = (filter || '').trim().toLowerCase();
+  const tbody = document.getElementById('tbody-products');
+  const countEl = document.getElementById('products-count');
+  if (!_products.length) { tbody.innerHTML = '<tr><td colspan="7" class="text-muted" style="text-align:center;padding:40px">No products yet. <a href="#" onclick="openModal(\'modal-product\')" style="color:var(--accent2)">Add one</a></td></tr>'; return; }
+  const rows = q ? _products.filter(p => (p.name||'').toLowerCase().includes(q) || (p.product_code||'').toLowerCase().includes(q) || (p.category||'').toLowerCase().includes(q)) : _products;
+  if (countEl) countEl.textContent = q ? `${rows.length}/${_products.length}` : _products.length;
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="7" class="text-muted" style="text-align:center;padding:40px">No matching products</td></tr>'; return; }
+  tbody.innerHTML = rows.map(p => `
+    <tr>
+      <td class="mono primary">${p.product_code}</td>
+      <td class="primary">${p.name}</td>
+      <td class="text-muted">${p.category || '—'}</td>
+      <td>${fmt.currency(p.unit_price)}</td>
+      <td>${fmt.currency(p.standard_cost)}</td>
+      <td class="text-muted">${p.lead_time_days || 0}d</td>
+      <td><button class="btn btn-secondary btn-sm" onclick="editProduct('${p.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')">Del</button></td>
+    </tr>
+  `).join('');
+}
+function filterProducts(val) { renderProductsList(val); }
 
 Pages.products = async () => {
   try {
     _products = await api('GET', '/products');
+    _products = [...new Map(_products.map(p => [`${p.product_code}|${p.name}`, p])).values()];
     _products.sort((a, b) => (a.lead_time_days || 0) - (b.lead_time_days || 0));
-    const tbody = document.getElementById('tbody-products');
-    if (!_products.length) { tbody.innerHTML = '<tr><td colspan="7" class="text-muted" style="text-align:center;padding:40px">No products yet. <a href="#" onclick="openModal(\'modal-product\')" style="color:var(--accent2)">Add one</a></td></tr>'; return; }
-    tbody.innerHTML = _products.map(p => `
-      <tr>
-        <td class="mono primary">${p.product_code}</td>
-        <td class="primary">${p.name}</td>
-        <td class="text-muted">${p.category || '—'}</td>
-        <td>${fmt.currency(p.unit_price)}</td>
-        <td>${fmt.currency(p.standard_cost)}</td>
-        <td class="text-muted">${p.lead_time_days || 0}d</td>
-        <td><button class="btn btn-secondary btn-sm" onclick="editProduct('${p.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteProduct('${p.id}')">Del</button></td>
-      </tr>
-    `).join('');
+    const searchEl = document.getElementById('products-search');
+    renderProductsList(searchEl ? searchEl.value : '');
   } catch(e) { toast(e.message,'error'); }
 };
+
+function renderCustomersList(filter) {
+  const q = (filter || '').trim().toLowerCase();
+  const tbody = document.getElementById('tbody-customers');
+  const countEl = document.getElementById('customers-count');
+  if (!_customers.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:40px">No customers yet</td></tr>'; return; }
+  const rows = q ? _customers.filter(c => (c.name||'').toLowerCase().includes(q) || (c.customer_code||'').toLowerCase().includes(q) || (c.contact_person||'').toLowerCase().includes(q) || (c.email||'').toLowerCase().includes(q)) : _customers;
+  if (countEl) countEl.textContent = q ? `${rows.length}/${_customers.length}` : _customers.length;
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:40px">No matching customers</td></tr>'; return; }
+  tbody.innerHTML = rows.map(c => `
+    <tr>
+      <td class="mono primary">${c.customer_code}</td>
+      <td class="primary">${c.name}</td>
+      <td>${fmt.priorityBadge(c.priority)}</td>
+      <td class="text-muted">${c.contact_person || '—'}</td>
+      <td class="text-muted">${c.email || '—'}</td>
+      <td><button class="btn btn-secondary btn-sm" onclick="editCustomer('${c.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')">Del</button></td>
+    </tr>
+  `).join('');
+}
+function filterCustomers(val) { renderCustomersList(val); }
 
 Pages.customers = async () => {
   try {
     _customers = await api('GET', '/customers');
     _customers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    const tbody = document.getElementById('tbody-customers');
-    if (!_customers.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:40px">No customers yet</td></tr>'; return; }
-    tbody.innerHTML = _customers.map(c => `
-      <tr>
-        <td class="mono primary">${c.customer_code}</td>
-        <td class="primary">${c.name}</td>
-        <td>${fmt.priorityBadge(c.priority)}</td>
-        <td class="text-muted">${c.contact_person || '—'}</td>
-        <td class="text-muted">${c.email || '—'}</td>
-        <td><button class="btn btn-secondary btn-sm" onclick="editCustomer('${c.id}')">Edit</button> <button class="btn btn-danger btn-sm" onclick="deleteCustomer('${c.id}')">Del</button></td>
-      </tr>
-    `).join('');
+    const searchEl = document.getElementById('customers-search');
+    renderCustomersList(searchEl ? searchEl.value : '');
   } catch(e) { toast(e.message,'error'); }
 };
 
@@ -1362,7 +1546,7 @@ function renderCapBucketHtml(r) {
     const isCurrent = c.week === cur.week && c.year === cur.year;
     const ring = isCurrent ? 'box-shadow:0 0 0 2px var(--accent);' : '';
     return `<span style="background:${isZero ? 'rgba(255,59,48,0.15)' : 'var(--bg4)'};padding:3px 8px;border-radius:4px;font-size:11px;font-family:var(--mono);${isZero ? 'color:var(--red);font-weight:600;border:1px solid var(--red)' : ''}${ring}">
-      W${c.week}/${c.year}: ${c.capacity}${isCurrent ? ' •' : ''}
+      W${c.week}/${c.year}: ${c.capacity}
     </span>`;
   }).join('');
   const first = slice[0], last = slice[slice.length-1];
@@ -1388,38 +1572,49 @@ function shiftCapWindow(restrictionId, dir) {
   if (el) el.innerHTML = renderCapBucketHtml(r);
 }
 
+function renderRestrictionsList(filter) {
+  const q = (filter || '').trim().toLowerCase();
+  const container = document.getElementById('restrictions-list');
+  const countEl = document.getElementById('restrictions-count');
+  if (!_restrictions.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">⚙️</div><div>No restrictions yet</div></div>'; return; }
+  const rows = q ? _restrictions.filter(r => (r.name||'').toLowerCase().includes(q) || (r.restriction_code||'').toLowerCase().includes(q) || (r.resource_type||'').toLowerCase().includes(q)) : _restrictions;
+  if (countEl) countEl.textContent = q ? `${rows.length}/${_restrictions.length}` : _restrictions.length;
+  if (!rows.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div>No matching restrictions</div></div>'; return; }
+  container.innerHTML = rows.map(r => {
+    const caps = r.weekly_capacities || [];
+    return `
+    <div class="card mb-4">
+      <div class="card-header">
+        <div class="flex items-center gap-3">
+          <span class="mono text-accent">${r.restriction_code}</span>
+          <span class="primary" style="font-weight:600">${r.name}</span>
+          <span class="text-muted text-sm">${r.resource_type || ''}</span>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-secondary btn-sm" onclick="openRestrictionCapacity('${r.id}','${r.name}')">📅 Capacities (${caps.length})</button>
+          <button class="btn btn-secondary btn-sm" onclick="editRestriction('${r.id}')">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteRestriction('${r.id}')">Delete</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="flex gap-4 mb-4" style="flex-wrap:wrap">
+          <div><div class="text-xs text-muted">Penalty / Unit</div><div style="color:var(--red);font-weight:600">$${fmt.num(r.penalty_cost_per_unit)}</div></div>
+          <div><div class="text-xs text-muted">Valid From</div><div class="text-sm">${r.valid_from || '—'}</div></div>
+          <div><div class="text-xs text-muted">Valid To</div><div class="text-sm">${r.valid_to || '—'}</div></div>
+          <div><div class="text-xs text-muted">Weekly Buckets</div><div class="text-sm">${caps.length}</div></div>
+        </div>
+        <div id="cap-bucket-${r.id}">${renderCapBucketHtml(r)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function filterRestrictions(val) { renderRestrictionsList(val); }
+
 Pages.restrictions = async () => {
   try {
-    _restrictions = await api('GET', '/restrictions');
-    const container = document.getElementById('restrictions-list');
-    if (!_restrictions.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">⚙️</div><div>No restrictions yet</div></div>'; return; }
-    container.innerHTML = _restrictions.map(r => {
-      const caps = r.weekly_capacities || [];
-      return `
-      <div class="card mb-4">
-        <div class="card-header">
-          <div class="flex items-center gap-3">
-            <span class="mono text-accent">${r.restriction_code}</span>
-            <span class="primary" style="font-weight:600">${r.name}</span>
-            <span class="text-muted text-sm">${r.resource_type || ''}</span>
-          </div>
-          <div class="flex gap-2">
-            <button class="btn btn-secondary btn-sm" onclick="openRestrictionCapacity('${r.id}','${r.name}')">📅 Capacities (${caps.length})</button>
-            <button class="btn btn-secondary btn-sm" onclick="editRestriction('${r.id}')">Edit</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteRestriction('${r.id}')">Delete</button>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="flex gap-4 mb-4" style="flex-wrap:wrap">
-            <div><div class="text-xs text-muted">Penalty / Unit</div><div style="color:var(--red);font-weight:600">$${fmt.num(r.penalty_cost_per_unit)}</div></div>
-            <div><div class="text-xs text-muted">Valid From</div><div class="text-sm">${r.valid_from || '—'}</div></div>
-            <div><div class="text-xs text-muted">Valid To</div><div class="text-sm">${r.valid_to || '—'}</div></div>
-            <div><div class="text-xs text-muted">Weekly Buckets</div><div class="text-sm">${caps.length}</div></div>
-          </div>
-          <div id="cap-bucket-${r.id}">${renderCapBucketHtml(r)}</div>
-        </div>
-      </div>`;
-    }).join('');
+    _restrictions = await api('GET', locPath('/restrictions'));
+    const searchEl = document.getElementById('restrictions-search');
+    renderRestrictionsList(searchEl ? searchEl.value : '');
   } catch(e) { toast(e.message,'error'); }
 };
 
@@ -1441,7 +1636,7 @@ function renderAvailBucketHtml(c) {
     const isCurrent = a.week === cur.week && a.year === cur.year;
     const ring = isCurrent ? 'box-shadow:0 0 0 2px var(--accent);' : '';
     return `<span style="background:${isZero ? 'rgba(255,59,48,0.15)' : 'var(--bg4)'};padding:3px 8px;border-radius:4px;font-size:11px;font-family:var(--mono);${isZero ? 'color:var(--red);font-weight:600;border:1px solid var(--red)' : ''}${ring}">
-      W${a.week}/${a.year}: ${a.available_qty}${isCurrent ? ' •' : ''}
+      W${a.week}/${a.year}: ${a.available_qty}
     </span>`;
   }).join('');
   const first = slice[0], last = slice[slice.length-1];
@@ -1467,92 +1662,144 @@ function shiftAvailWindow(componentId, dir) {
   if (el) el.innerHTML = renderAvailBucketHtml(c);
 }
 
+function renderComponentsList(filter) {
+  const q = (filter || '').trim().toLowerCase();
+  const container = document.getElementById('components-list');
+  const countEl = document.getElementById('components-count');
+  if (!_components.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">🔩</div><div>No components yet</div></div>'; return; }
+  const rows = q ? _components.filter(c => (c.name||'').toLowerCase().includes(q) || (c.component_code||'').toLowerCase().includes(q) || (c.supplier||'').toLowerCase().includes(q)) : _components;
+  if (countEl) countEl.textContent = q ? `${rows.length}/${_components.length}` : _components.length;
+  if (!rows.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div>No matching components</div></div>'; return; }
+  container.innerHTML = rows.map(c => {
+    const avails = c.availability || [];
+    const totalAvail = avails.reduce((s,a) => s+Number(a.available_qty), 0);
+    const risk = totalAvail < c.min_stock * 4 ? 'High' : totalAvail < c.min_stock * 8 ? 'Medium' : 'Low';
+    const riskCls = risk === 'High' ? 'critical' : risk === 'Medium' ? 'warning' : 'ok';
+    return `
+    <div class="card mb-4">
+      <div class="card-header">
+        <div class="flex items-center gap-3">
+          <span class="mono text-accent">${c.component_code}</span>
+          <span class="primary" style="font-weight:600">${c.name}</span>
+          <span class="badge badge-${riskCls}">${risk} Risk</span>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-secondary btn-sm" onclick="openComponentAvailability('${c.id}','${c.name}')">📊 Availability (${avails.length})</button>
+          <button class="btn btn-secondary btn-sm" onclick="editComponent('${c.id}')">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteComponent('${c.id}')">Delete</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="flex gap-4 mb-4" style="flex-wrap:wrap">
+          <div><div class="text-xs text-muted">Supplier</div><div class="text-sm">${c.supplier || '—'}</div></div>
+          <div><div class="text-xs text-muted">Unit Cost</div><div style="font-weight:600">${fmt.currency(c.unit_cost)}</div></div>
+          <div><div class="text-xs text-muted">Lead Time</div><div class="text-sm">${c.lead_time_days || 0}d</div></div>
+          <div><div class="text-xs text-muted">Min Stock</div><div class="text-sm">${c.min_stock || 0}</div></div>
+          <div><div class="text-xs text-muted">Total Available</div><div style="color:${totalAvail <= 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${fmt.num(totalAvail)}</div></div>
+        </div>
+        <div id="avail-bucket-${c.id}">${renderAvailBucketHtml(c)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function filterComponents(val) { renderComponentsList(val); }
+
 Pages.components = async () => {
   try {
-    _components = await api('GET', '/components');
-    const container = document.getElementById('components-list');
-    if (!_components.length) { container.innerHTML = '<div class="empty-state"><div class="empty-icon">🔩</div><div>No components yet</div></div>'; return; }
-    container.innerHTML = _components.map(c => {
-      const avails = c.availability || [];
-      const totalAvail = avails.reduce((s,a) => s+Number(a.available_qty), 0);
-      const risk = totalAvail < c.min_stock * 4 ? 'High' : totalAvail < c.min_stock * 8 ? 'Medium' : 'Low';
-      const riskCls = risk === 'High' ? 'critical' : risk === 'Medium' ? 'warning' : 'ok';
-      return `
-      <div class="card mb-4">
-        <div class="card-header">
-          <div class="flex items-center gap-3">
-            <span class="mono text-accent">${c.component_code}</span>
-            <span class="primary" style="font-weight:600">${c.name}</span>
-            <span class="badge badge-${riskCls}">${risk} Risk</span>
-          </div>
-          <div class="flex gap-2">
-            <button class="btn btn-secondary btn-sm" onclick="openComponentAvailability('${c.id}','${c.name}')">📊 Availability (${avails.length})</button>
-            <button class="btn btn-secondary btn-sm" onclick="editComponent('${c.id}')">Edit</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteComponent('${c.id}')">Delete</button>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="flex gap-4 mb-4" style="flex-wrap:wrap">
-            <div><div class="text-xs text-muted">Supplier</div><div class="text-sm">${c.supplier || '—'}</div></div>
-            <div><div class="text-xs text-muted">Unit Cost</div><div style="font-weight:600">${fmt.currency(c.unit_cost)}</div></div>
-            <div><div class="text-xs text-muted">Lead Time</div><div class="text-sm">${c.lead_time_days || 0}d</div></div>
-            <div><div class="text-xs text-muted">Min Stock</div><div class="text-sm">${c.min_stock || 0}</div></div>
-            <div><div class="text-xs text-muted">Total Available</div><div style="color:${totalAvail <= 0 ? 'var(--red)' : 'var(--green)'};font-weight:600">${fmt.num(totalAvail)}</div></div>
-          </div>
-          <div id="avail-bucket-${c.id}">${renderAvailBucketHtml(c)}</div>
-        </div>
-      </div>`;
-    }).join('');
+    _components = await api('GET', locPath('/components'));
+    const searchEl = document.getElementById('components-search');
+    renderComponentsList(searchEl ? searchEl.value : '');
   } catch(e) { toast(e.message,'error'); }
 };
+
+let _penaltyRules = [];
+let _penaltyProdMap = {};
+
+function renderPenaltiesList(filter) {
+  const q = (filter || '').trim().toLowerCase();
+  const tbody = document.getElementById('tbody-penalties');
+  const countEl = document.getElementById('penalties-count');
+  if (!_penaltyRules.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:40px">No rules yet</td></tr>'; return; }
+  const rows = q ? _penaltyRules.filter(r => {
+    const prodName = r.product_id ? (_penaltyProdMap[r.product_id] || '') : 'All Products';
+    return (r.rule_type||'').toLowerCase().includes(q) || (r.customer_priority||'').toLowerCase().includes(q) || prodName.toLowerCase().includes(q);
+  }) : _penaltyRules;
+  if (countEl) countEl.textContent = q ? `${rows.length}/${_penaltyRules.length}` : _penaltyRules.length;
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:40px">No matching rules</td></tr>'; return; }
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td><span class="badge ${r.rule_type === 'late_delivery' ? 'badge-delayed' : 'badge-critical'}">${r.rule_type.replace('_',' ')}</span></td>
+      <td>${fmt.priorityBadge(r.customer_priority)}</td>
+      <td class="text-muted">${r.product_id ? _penaltyProdMap[r.product_id] || r.product_id : 'All Products'}</td>
+      <td class="text-yellow">${fmt.currency(r.penalty_per_day)}/day</td>
+      <td class="text-red">${fmt.currency(r.penalty_flat)}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deletePenalty('${r.id}')">Del</button></td>
+    </tr>
+  `).join('');
+}
+function filterPenalties(val) { renderPenaltiesList(val); }
 
 Pages.penalties = async () => {
   try {
-    const rules = await api('GET', '/penalty-rules');
-    const prods = await api('GET', '/products');
-    const prodMap = Object.fromEntries(prods.map(p => [p.id, p.name]));
-    const tbody = document.getElementById('tbody-penalties');
-    if (!rules.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-muted" style="text-align:center;padding:40px">No rules yet</td></tr>'; return; }
-    tbody.innerHTML = rules.map(r => `
-      <tr>
-        <td><span class="badge ${r.rule_type === 'late_delivery' ? 'badge-delayed' : 'badge-critical'}">${r.rule_type.replace('_',' ')}</span></td>
-        <td>${fmt.priorityBadge(r.customer_priority)}</td>
-        <td class="text-muted">${r.product_id ? prodMap[r.product_id] || r.product_id : 'All Products'}</td>
-        <td class="text-yellow">${fmt.currency(r.penalty_per_day)}/day</td>
-        <td class="text-red">${fmt.currency(r.penalty_flat)}</td>
-        <td><button class="btn btn-danger btn-sm" onclick="deletePenalty('${r.id}')">Del</button></td>
-      </tr>
-    `).join('');
+    const [rules, prods] = await Promise.all([api('GET', '/penalty-rules'), api('GET', '/products')]);
+    _penaltyRules = rules;
+    _penaltyProdMap = Object.fromEntries(prods.map(p => [p.id, p.name]));
+    const searchEl = document.getElementById('penalties-search');
+    renderPenaltiesList(searchEl ? searchEl.value : '');
   } catch(e) { toast(e.message,'error'); }
 };
+
+let _orders = [];
+
+function renderOrdersList(filter) {
+  const q = (filter || '').trim().toLowerCase();
+  const tbody = document.getElementById('tbody-orders');
+  const countEl = document.getElementById('orders-count');
+  if (!_orders.length) { tbody.innerHTML = '<tr><td colspan="9" class="text-muted" style="text-align:center;padding:40px">No orders yet</td></tr>'; return; }
+  const rows = q ? _orders.filter(o => (o.order_number||'').toLowerCase().includes(q) || (o.customer_name||'').toLowerCase().includes(q) || (o.product_name||'').toLowerCase().includes(q) || (o.status||'').toLowerCase().includes(q)) : _orders;
+  if (countEl) countEl.textContent = q ? `${rows.length}/${_orders.length}` : _orders.length;
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="9" class="text-muted" style="text-align:center;padding:40px">No matching orders</td></tr>'; return; }
+  const today = new Date().toISOString().split('T')[0];
+  tbody.innerHTML = rows.map(o => {
+    const overdue = o.promise_date < today && (o.status === 'Open' || o.status === 'Confirmed');
+    return `<tr ${overdue ? 'style="background:rgba(239,68,68,0.05)"' : ''}>
+      <td class="mono primary">${o.order_number}</td>
+      <td>${o.customer_name || '—'}<br><span class="text-xs text-muted">${fmt.priorityBadge(o.priority)}</span></td>
+      <td class="text-sm">${o.product_name || '—'}</td>
+      <td class="${overdue ? 'text-red' : ''}">${fmt.date(o.promise_date)}${overdue ? ' ⚠️' : ''}</td>
+      <td class="mono">${o.quantity}</td>
+      <td>${fmt.currency(o.revenue)}</td>
+      <td>${fmt.priorityBadge(o.priority)}</td>
+      <td>${fmt.statusBadge(o.status)}</td>
+      <td>
+        <button class="btn btn-secondary btn-sm" onclick="editOrder('${o.id}')">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteOrder('${o.id}')">Del</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+function filterOrders(val) { renderOrdersList(val); }
 
 Pages.orders = async () => {
   try {
-    const orders = await api('GET', '/sales-orders');
-    const tbody = document.getElementById('tbody-orders');
-    if (!orders.length) { tbody.innerHTML = '<tr><td colspan="9" class="text-muted" style="text-align:center;padding:40px">No orders yet</td></tr>'; return; }
-    const today = new Date().toISOString().split('T')[0];
-    tbody.innerHTML = orders.map(o => {
-      const overdue = o.promise_date < today && (o.status === 'Open' || o.status === 'Confirmed');
-      return `<tr ${overdue ? 'style="background:rgba(239,68,68,0.05)"' : ''}>
-        <td class="mono primary">${o.order_number}</td>
-        <td>${o.customer_name || '—'}<br><span class="text-xs text-muted">${fmt.priorityBadge(o.priority)}</span></td>
-        <td class="text-sm">${o.product_name || '—'}</td>
-        <td class="${overdue ? 'text-red' : ''}">${fmt.date(o.promise_date)}${overdue ? ' ⚠️' : ''}</td>
-        <td class="mono">${o.quantity}</td>
-        <td>${fmt.currency(o.revenue)}</td>
-        <td>${fmt.priorityBadge(o.priority)}</td>
-        <td>${fmt.statusBadge(o.status)}</td>
-        <td>
-          <button class="btn btn-secondary btn-sm" onclick="editOrder('${o.id}')">Edit</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteOrder('${o.id}')">Del</button>
-        </td>
-      </tr>`;
-    }).join('');
+    _orders = await api('GET', locPath('/sales-orders'));
+    const searchEl = document.getElementById('orders-search');
+    renderOrdersList(searchEl ? searchEl.value : '');
   } catch(e) { toast(e.message,'error'); }
 };
 
-Pages.optimize = () => { /* static */ };
+Pages.optimize = () => {
+  const fromEl = document.getElementById('opt-date-from');
+  const toEl   = document.getElementById('opt-date-to');
+  if (!fromEl.value && !toEl.value) {
+    const today = new Date();
+    const fmt = d => d.toISOString().slice(0, 10);
+    const from = new Date(today); from.setDate(today.getDate() - 28);
+    const to   = new Date(today); to.setDate(today.getDate() + 28);
+    fromEl.value = fmt(from);
+    toEl.value   = fmt(to);
+  }
+};
 
 Pages.results = async () => {
   try {
@@ -1576,33 +1823,101 @@ Pages.results = async () => {
   } catch(e) { toast(e.message,'error'); }
 };
 
-Pages.seed = async () => {
-  if (!confirm('This will clear ALL existing data and load sample forklift manufacturing data. Continue?')) return;
+async function openLocationModal() {
+  document.getElementById('modal-location-close').style.display = 'none';
+  document.getElementById('modal-location-cancel').style.display = 'none';
+  document.getElementById('modal-location-desc').textContent = 'Please select a location to continue.';
+  const confirmBtn = document.getElementById('modal-location-confirm');
+  confirmBtn.disabled = false;
+  confirmBtn.textContent = 'Continue';
+
+  const sel = document.getElementById('location-select');
+  sel.innerHTML = '<option value="">Loading…</option>';
   try {
-    const r = await api('POST', '/seed');
-    // Clear previous optimization results from the UI
+    const locations = await api('GET', '/locations');
+    if (!locations.length) { toast('No locations found in SAP backend', 'error'); return; }
+    const optionsHtml = locations.map(l =>
+      `<option value="${l.LOCATION_ID}">${l.LOCATION_ID}${l.LOCATION_DESC ? ' — ' + l.LOCATION_DESC : ''}</option>`
+    ).join('');
+    sel.innerHTML = optionsHtml;
+    const topbarSel = document.getElementById('topbar-location-select');
+    topbarSel.innerHTML = '<option value="">Select location…</option>' + optionsHtml;
+  } catch(e) { toast('Failed to load locations: ' + e.message, 'error'); return; }
+  openModal('modal-location');
+}
+
+function setTopbarLocation(locationId) {
+  const sel = document.getElementById('topbar-location-select');
+  if (sel) sel.value = locationId;
+  const optLocField = document.getElementById('opt-location-id');
+  if (optLocField) optLocField.value = locationId;
+}
+
+function onTopbarLocationChange(locationId) {
+  _currentLocationId = locationId;
+  setTopbarLocation(locationId);
+  const resultsSection = document.getElementById('opt-results-section');
+  if (resultsSection) resultsSection.style.display = 'none';
+  const resultsContent = document.getElementById('opt-results-content');
+  if (resultsContent) resultsContent.innerHTML = '';
+  const optProgress = document.getElementById('opt-progress');
+  if (optProgress) {
+    optProgress.innerHTML = '<div class="empty-state"><div class="empty-icon">🧬</div><div>Configure parameters and click<br><strong>Run Optimization</strong> to start</div></div>';
+  }
+  navigate('dashboard');
+}
+
+Pages.seed = async () => {
+  if (!_currentLocationId) { toast('Please select a location from the topbar first.', 'error'); return; }
+  const topbarSel = document.getElementById('topbar-location-select');
+  const locationLabel = topbarSel?.options[topbarSel.selectedIndex]?.text || _currentLocationId;
+  if (!confirm(`This will clear ALL existing data and load data for:\n\n${locationLabel}\n\nContinue?`)) return;
+  const btn = document.getElementById('btn-seed');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Loading...';
+  try {
+    const r = await api('POST', '/seed', { locationId: _currentLocationId });
+    const optLocField = document.getElementById('opt-location-id');
+    if (optLocField) { optLocField.value = _currentLocationId; optLocField.title = locationLabel; }
     const resultsSection = document.getElementById('opt-results-section');
-    if (resultsSection) { resultsSection.style.display = 'none'; }
+    if (resultsSection) resultsSection.style.display = 'none';
     const resultsContent = document.getElementById('opt-results-content');
-    if (resultsContent) { resultsContent.innerHTML = ''; }
+    if (resultsContent) resultsContent.innerHTML = '';
     const optProgress = document.getElementById('opt-progress');
     if (optProgress) {
       optProgress.innerHTML = '<div class="empty-state"><div class="empty-icon">🧬</div><div>Configure parameters and click<br><strong>Run Optimization</strong> to start</div></div>';
     }
-    //End of clear previous optimization results.
-    toast(`Sample data loaded: ${r.orders} orders, ${r.products} products, ${r.customers} customers`, 'success');
+    toast(`Data loaded for ${locationLabel}: ${r.orders} orders, ${r.products} products, ${r.customers} customers`, 'success');
     navigate('dashboard');
-  } catch(e) { toast(e.message,'error'); }
+  } catch(e) { toast(e.message, 'error'); }
+  finally {
+    btn.disabled = false;
+    btn.innerHTML = '🌱 Load Data';
+  }
 };
 
+async function confirmLocationAndSeed() {
+  const sel = document.getElementById('location-select');
+  const locationId = sel.value;
+  if (!locationId) { toast('Please select a location', 'error'); return; }
+  const locationLabel = sel.options[sel.selectedIndex].text;
+  closeModal('modal-location');
+  _currentLocationId = locationId;
+  setTopbarLocation(locationId);
+  const optLocField = document.getElementById('opt-location-id');
+  if (optLocField) { optLocField.value = locationId; optLocField.title = locationLabel; }
+  navigate('dashboard');
+}
+
 Pages.clearData = async () => {
-  if (!confirm('This will permanently delete ALL data from the system. This action cannot be undone. Continue?')) return;
+  if (!_currentLocationId) { toast('No location selected. Load data for a location first.', 'error'); return; }
+  const topbarSel = document.getElementById('topbar-location-select');
+  const locationLabel = topbarSel?.options[topbarSel.selectedIndex]?.text || _currentLocationId;
+  if (!confirm(`This will permanently delete ALL data for location: ${locationLabel}\n\nThis action cannot be undone. Continue?`)) return;
   try {
-    const r = await api('DELETE', '/clear-data');
-    // Clear previous import/upload progress from the UI
+    const r = await api('DELETE', locPath('/clear-data'));
     const importProgress = document.getElementById('ie-progress');
     if (importProgress) { importProgress.style.display = 'none'; importProgress.innerHTML = ''; }
-    // Clear previous optimization results from the UI
     const resultsSection = document.getElementById('opt-results-section');
     if (resultsSection) { resultsSection.style.display = 'none'; }
     const resultsContent = document.getElementById('opt-results-content');
@@ -1611,7 +1926,9 @@ Pages.clearData = async () => {
     if (optProgress) {
       optProgress.innerHTML = '<div class="empty-state"><div class="empty-icon">🧬</div><div>Configure parameters and click<br><strong>Run Optimization</strong> to start</div></div>';
     }
-    toast('All data has been cleared successfully', 'success');
+    _currentLocationId = '';
+    setTopbarLocation('');
+    toast(`All data for location ${locationLabel} has been cleared successfully`, 'success');
     navigate('dashboard');
   } catch(e) { toast(e.message,'error'); }
 };
@@ -1810,11 +2127,15 @@ async function deletePenalty(id) {
 
 // ===== Order CRUD =====
 async function openOrderModal() {
+  document.getElementById('ord-id').value = '';
+  document.getElementById('ord-num').value = '';
+  document.getElementById('ord-notes').value = '';
   const prods = await api('GET', '/products');
   const custs = await api('GET', '/customers');
   const pSel = document.getElementById('ord-product');
   pSel.innerHTML = prods.map(p => `<option value="${p.id}" data-price="${p.unit_price}" data-cost="${p.standard_cost}">${p.name} (${p.product_code})</option>`).join('');
   document.getElementById('ord-customer').innerHTML = custs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  updateOrderCost();
   openModal('modal-order');
 }
 function updateOrderCost() {
@@ -1878,7 +2199,87 @@ async function deleteOrder(id) {
   catch(e) { toast(e.message,'error'); }
 }
 
+// ===== Fitness Chart =====
+function renderFitnessChart(containerId, data) {
+  const el = document.getElementById(containerId);
+  if (!el || data.length === 0) return;
+
+  // Downsample to max 300 points for readability
+  const maxPts = 300;
+  const step = data.length > maxPts ? Math.ceil(data.length / maxPts) : 1;
+  const pts = data.filter((_, i) => i % step === 0 || i === data.length - 1);
+
+  const W = el.clientWidth || 560, H = 180;
+  const pad = { top: 16, right: 16, bottom: 32, left: 60 };
+  const iW = W - pad.left - pad.right;
+  const iH = H - pad.top - pad.bottom;
+
+  const gens   = pts.map(p => Number(p.generation || p.gen));
+  const bests  = pts.map(p => Number(p.best_fitness || p.best));
+  const avgs   = pts.map(p => Number(p.avg_fitness  || p.avg));
+  const allVals = [...bests, ...avgs].filter(v => isFinite(v) && v >= 0);
+  if (allVals.length === 0) return;
+
+  // Use log scale (add 1 to handle 0)
+  const logVals = allVals.map(v => Math.log10(v + 1));
+  const minLog = 0, maxLog = Math.max(...logVals) || 1;
+
+  const xScale = g => pad.left + ((g - gens[0]) / (gens[gens.length - 1] - gens[0] || 1)) * iW;
+  const yScale = v => pad.top + iH - (Math.log10(v + 1) - minLog) / (maxLog - minLog) * iH;
+
+  const polyline = arr => arr.map((v, i) => `${xScale(gens[i]).toFixed(1)},${yScale(v).toFixed(1)}`).join(' ');
+
+  // Y-axis ticks (log scale)
+  const yTicks = [];
+  for (let e = 0; e <= Math.ceil(maxLog); e++) {
+    const v = Math.pow(10, e);
+    const y = yScale(v);
+    if (y >= pad.top && y <= pad.top + iH) {
+      const label = v >= 1e9 ? (v/1e9).toFixed(0)+'B' : v >= 1e6 ? (v/1e6).toFixed(0)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v.toFixed(0);
+      yTicks.push(`<line x1="${pad.left}" x2="${pad.left + iW}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-dasharray="3,3"/>
+        <text x="${(pad.left-4).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="end" dominant-baseline="middle" font-size="9" fill="var(--text3)">${label}</text>`);
+    }
+  }
+
+  // X-axis ticks
+  const xTickCount = Math.min(6, gens.length);
+  const xTicks = Array.from({ length: xTickCount }, (_, i) => {
+    const idx = Math.floor(i * (gens.length - 1) / (xTickCount - 1 || 1));
+    const x = xScale(gens[idx]);
+    return `<line x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${pad.top + iH}" y2="${pad.top + iH + 4}" stroke="var(--border)"/>
+      <text x="${x.toFixed(1)}" y="${(pad.top + iH + 14).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--text3)">${gens[idx]}</text>`;
+  });
+
+  el.innerHTML = `
+    <svg width="100%" viewBox="0 0 ${W} ${H}" style="overflow:visible">
+      ${yTicks.join('')}
+      ${xTicks.join('')}
+      <polyline points="${polyline(avgs)}" fill="none" stroke="var(--text3)" stroke-width="1.5" opacity="0.6"/>
+      <polyline points="${polyline(bests)}" fill="none" stroke="var(--accent)" stroke-width="2"/>
+      <text x="${pad.left}" y="${H - 4}" font-size="9" fill="var(--text3)">Generation</text>
+    </svg>`;
+}
+
+async function fetchAndRenderFitnessChart(runId) {
+  try {
+    const data = await _pollGet(`/optimization-runs/${runId}/gen-log`);
+    if (!data || data.length === 0) return;
+    document.getElementById('opt-fitness-card').style.display = '';
+    const last = data[data.length - 1];
+    document.getElementById('opt-fitness-gen-label').textContent =
+      `Gen ${last.generation || last.gen} · Best: ${Number(last.best_fitness || last.best).toLocaleString('en-US', {maximumFractionDigits: 0})}`;
+    renderFitnessChart('opt-fitness-chart', data);
+  } catch(_) { /* chart fetch failure is non-critical */ }
+}
+
 // ===== Optimization =====
+function switchOptTab(tab) {
+  document.getElementById('opt-tab-gen').classList.toggle('active', tab === 'gen');
+  document.getElementById('opt-tab-time').classList.toggle('active', tab === 'time');
+  document.getElementById('opt-panel-gen').style.display  = tab === 'gen'  ? '' : 'none';
+  document.getElementById('opt-panel-time').style.display = tab === 'time' ? '' : 'none';
+}
+
 async function runOptimization() {
   const btn = document.getElementById('btn-run-opt');
   btn.disabled = true;
@@ -1891,27 +2292,35 @@ async function runOptimization() {
       <div class="text-muted text-sm">Genetic algorithm is evaluating order schedules</div>
     </div>`;
   document.getElementById('opt-results-section').style.display = 'none';
+  document.getElementById('opt-fitness-card').style.display = 'none';
 
   try {
-    const result = await api('POST', '/optimize', {
-      description: document.getElementById('opt-desc').value,
-      population_size: parseInt(document.getElementById('opt-pop').value)||50,
-      generations: parseInt(document.getElementById('opt-gen').value)||100,
-      mutation_rate: parseFloat(document.getElementById('opt-mut').value)||0.1,
-      crossover_rate: parseFloat(document.getElementById('opt-cross').value)||0.8
-    });
+    const _locId    = document.getElementById('opt-location-id').value || _currentLocationId || undefined;
+    const _dateFrom = document.getElementById('opt-date-from').value || undefined;
+    const _dateTo   = document.getElementById('opt-date-to').value || undefined;
+    const _useTime  = document.getElementById('opt-tab-time').classList.contains('active');
 
-    const s = result.summary;
-    document.getElementById('opt-progress').innerHTML = `
-      <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:16px;text-align:center">
-        <div style="font-size:28px;margin-bottom:8px">✅</div>
-        <div style="font-size:15px;font-weight:700;color:var(--green)">Optimization Complete</div>
-        <div class="text-sm text-muted" style="margin-top:4px">${result.run?.run_number} · ${s.execution_time_ms}ms</div>
-      </div>`;
+    const payload = {
+      description:    document.getElementById('opt-desc').value,
+      population_size: parseInt(document.getElementById('opt-pop').value) || 50,
+      mutation_rate:  parseFloat(document.getElementById('opt-mut').value) || 0.1,
+      crossover_rate: parseFloat(document.getElementById('opt-cross').value) || 0.8,
+      locationId:         _locId,
+      promise_date_from:  _dateFrom,
+      promise_date_to:    _dateTo
+    };
 
-    renderOptimizationResults(result);
-    document.getElementById('opt-results-section').style.display = 'block';
-    toast(`Optimization complete: ${s.on_time_percentage}% on-time`, 'success');
+    if (_useTime) {
+      payload.time_limit_hrs = parseFloat(document.getElementById('opt-time-hrs').value) || 0.5;
+    } else {
+      payload.generations = parseInt(document.getElementById('opt-gen').value) || 100;
+    }
+
+    const { runId, runNumber } = await api('POST', '/optimize', payload);
+
+    // Poll until the background job finishes
+    await pollOptimizationStatus(runId, runNumber, btn);
+
   } catch(e) {
     document.getElementById('opt-progress').innerHTML = `
       <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:16px;text-align:center">
@@ -1920,6 +2329,138 @@ async function runOptimization() {
         <div class="text-sm text-muted">${e.message}</div>
       </div>`;
     toast(e.message,'error');
+    btn.disabled = false;
+    btn.innerHTML = '<span>🧬</span> Run Optimization';
+  }
+}
+
+async function stopOptimization(runId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Stopping...';
+  try {
+    await api('POST', `/optimize/${runId}/stop`);
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '⏹ Stop Optimization';
+    toast('Could not send stop signal: ' + e.message, 'error');
+  }
+}
+
+async function _pollGet(path, timeoutMs = 30000) {
+  const ctrl = new AbortController();
+  const tid  = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(API + path, { signal: ctrl.signal });
+    clearTimeout(tid);
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  } catch(e) {
+    clearTimeout(tid);
+    throw e;
+  }
+}
+
+async function pollOptimizationStatus(runId, runNumber, btn) {
+  const startedAt = Date.now();
+
+  const updateElapsed = () => {
+    const sec = Math.floor((Date.now() - startedAt) / 1000);
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    const elapsed = h > 0
+      ? `${h}h ${m}m ${s}s`
+      : m > 0 ? `${m}m ${s}s` : `${s}s`;
+    const el = document.getElementById('opt-elapsed');
+    if (el) el.textContent = elapsed;
+  };
+
+  document.getElementById('opt-progress').innerHTML = `
+    <div style="text-align:center;padding:40px 20px">
+      <div class="spinner" style="width:40px;height:40px;margin:0 auto 16px;border-width:3px"></div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:8px">Optimization running in background...</div>
+      <div class="text-muted text-sm">${runNumber}</div>
+      <div class="text-muted text-sm" style="margin-top:8px">Elapsed: <span id="opt-elapsed">0s</span></div>
+      <button class="btn btn-secondary" style="margin-top:16px;border-color:var(--red);color:var(--red)"
+        onclick="stopOptimization('${runId}', this)">⏹ Stop Optimization</button>
+    </div>`;
+
+  const ticker = setInterval(updateElapsed, 1000);
+
+  try {
+    let pollCount = 0;
+    while (true) {
+      await new Promise(r => setTimeout(r, 5000));
+      pollCount++;
+      // refresh fitness chart every 3rd poll (~15s) without blocking the status check
+      if (pollCount % 3 === 0) fetchAndRenderFitnessChart(runId);
+      let run;
+      try {
+        run = await _pollGet(`/optimization-runs/${runId}`);
+      } catch(e) {
+        continue; // any network error (timeout, connection reset, proxy drop) — retry next interval
+      }
+      if (!run) continue;
+
+      if (run.status === 'Completed' || run.status === 'Aborted') {
+        clearInterval(ticker);
+        const s = {
+          total_orders:         run.total_orders,
+          on_time_orders:       run.on_time_orders,
+          delayed_orders:       run.delayed_orders,
+          on_time_percentage:   Number(run.on_time_percentage).toFixed(1),
+          total_penalty_cost:   Number(run.total_penalty_cost).toFixed(2),
+          avg_delay_days:       Number(run.avg_delay_days).toFixed(1),
+          max_delay_days:       run.max_delay_days,
+          execution_time_ms:    run.execution_time_ms,
+          critical_restrictions: (run.capacity_analysis || []).filter(c => c.is_critical).length,
+          critical_components:   (run.component_analysis || []).filter(c => c.is_critical).length
+        };
+        const result = {
+          run,
+          summary: s,
+          order_results:      run.order_results      || [],
+          capacity_analysis:  run.capacity_analysis  || [],
+          component_analysis: run.component_analysis || []
+        };
+
+        if (run.status === 'Aborted') {
+          document.getElementById('opt-progress').innerHTML = `
+            <div style="background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.4);border-radius:8px;padding:16px;text-align:center">
+              <div style="font-size:28px;margin-bottom:8px">⏹</div>
+              <div style="font-size:15px;font-weight:700;color:var(--yellow, #f59e0b)">Optimization Aborted</div>
+              <div class="text-sm text-muted" style="margin-top:4px">${run.run_number} · showing best result found before stop</div>
+            </div>`;
+          toast('Optimization stopped — partial results shown', 'info');
+        } else {
+          document.getElementById('opt-progress').innerHTML = `
+            <div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:16px;text-align:center">
+              <div style="font-size:28px;margin-bottom:8px">✅</div>
+              <div style="font-size:15px;font-weight:700;color:var(--green)">Optimization Complete</div>
+              <div class="text-sm text-muted" style="margin-top:4px">${run.run_number} · ${s.execution_time_ms}ms</div>
+            </div>`;
+          toast(`Optimization complete: ${s.on_time_percentage}% on-time`, 'success');
+        }
+
+        await fetchAndRenderFitnessChart(runId);
+        renderOptimizationResults(result);
+        document.getElementById('opt-results-section').style.display = 'block';
+        break;
+      }
+
+      if (run.status === 'Failed') {
+        clearInterval(ticker);
+        throw new Error('Optimization failed on the server. Check server logs for details.');
+      }
+    }
+  } catch(e) {
+    clearInterval(ticker);
+    document.getElementById('opt-progress').innerHTML = `
+      <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:16px;text-align:center">
+        <div style="font-size:28px;margin-bottom:8px">❌</div>
+        <div style="color:var(--red)">Optimization Failed</div>
+        <div class="text-sm text-muted">${e.message}</div>
+      </div>`;
+    toast(e.message, 'error');
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<span>🧬</span> Run Optimization';
@@ -2063,7 +2604,121 @@ async function runOptimization() {
 
 //   document.getElementById('opt-results-content').innerHTML = html + downloadHtml + tabsHtml;
 // }
+
+async function toggleWhyDelayed(salesOrderId, originalDate, btnEl) {
+  const existingRow = document.getElementById('why-row-' + salesOrderId);
+  if (existingRow) {
+    existingRow.remove();
+    btnEl.textContent = 'Why?';
+    return;
+  }
+
+  btnEl.disabled = true;
+  btnEl.textContent = '…';
+
+  const tr = btnEl.closest('tr');
+  const colspan = tr.cells.length;
+
+  const loadRow = document.createElement('tr');
+  loadRow.id = 'why-row-' + salesOrderId;
+  loadRow.innerHTML = `<td colspan="${colspan}" style="background:var(--bg3);border-left:3px solid var(--yellow);padding:12px 20px">
+    <div class="spinner" style="width:14px;height:14px;display:inline-block;margin-right:8px;vertical-align:middle"></div>
+    <span class="text-muted text-sm">Analyzing delay reasons…</span>
+  </td>`;
+  tr.insertAdjacentElement('afterend', loadRow);
+
+  try {
+    const o = await api('GET', `/sales-orders/${salesOrderId}`);
+    const result = window._lastOptResult;
+    const caps  = result?.capacity_analysis || [];
+    const comps = result?.component_analysis || [];
+
+    const { week: pWeek, year: pYear } = isoWeekYear(new Date(originalDate + 'T00:00:00'));
+
+    const orderRestIds = new Set((o.restrictions || []).map(r => r.restriction_id));
+    const orderCompIds = new Set((o.components  || []).map(c => c.component_id));
+
+    const capIssues = caps.filter(c =>
+      Number(c.year) === pYear && Number(c.week) === pWeek &&
+      orderRestIds.has(c.restriction_id) &&
+      (Number(c.over_capacity) > 0 || Number(c.is_critical))
+    );
+    const compIssues = comps.filter(c =>
+      Number(c.year) === pYear && Number(c.week) === pWeek &&
+      orderCompIds.has(c.component_id) &&
+      (Number(c.shortage) > 0 || Number(c.is_critical))
+    );
+
+    let reasonsHtml = '';
+    if (capIssues.length === 0 && compIssues.length === 0) {
+      reasonsHtml = `<div style="color:var(--text2);font-size:13px;display:flex;align-items:flex-start;gap:10px">
+        <span style="font-size:18px;flex-shrink:0">📊</span>
+        <div>W${pWeek}/${pYear} had no hard constraint for this order, but the optimizer displaced it to free capacity for higher-priority orders.
+        See the <strong>Capacity Analysis</strong> tab for the full week picture.</div>
+      </div>`;
+    } else {
+      if (capIssues.length > 0) {
+        reasonsHtml += `<div style="margin-bottom:14px">
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);margin-bottom:8px">⚙️ Capacity constraints in W${pWeek}/${pYear}</div>
+          <div class="table-wrap"><table style="width:100%">
+            <thead><tr><th>Restriction / Resource</th><th>Available Cap.</th><th>Required</th><th>Over by</th><th>Type</th></tr></thead>
+            <tbody>${capIssues.map(c => {
+              const isHard = Number(c.capacity) <= 0;
+              return `<tr>
+                <td><div style="font-weight:600;font-size:13px">${c.restriction_name}</div><div class="mono text-xs text-muted">${c.restriction_code}</div></td>
+                <td class="mono">${Math.round(Number(c.capacity))}</td>
+                <td class="mono text-red">${Math.round(Number(c.required_capacity))}</td>
+                <td class="mono text-red">+${Math.round(Number(c.over_capacity))}</td>
+                <td>${isHard
+                  ? '<span class="badge badge-critical">⛔ Hard — Zero capacity</span>'
+                  : '<span class="badge badge-delayed">⚠ Overloaded</span>'}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table></div>
+        </div>`;
+      }
+      if (compIssues.length > 0) {
+        reasonsHtml += `<div>
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3);margin-bottom:8px">🔩 Component shortages in W${pWeek}/${pYear}</div>
+          <div class="table-wrap"><table style="width:100%">
+            <thead><tr><th>Component / Material</th><th>Available</th><th>Required</th><th>Shortage</th><th>Type</th></tr></thead>
+            <tbody>${compIssues.map(c => {
+              const isHard = Number(c.available) <= 0;
+              return `<tr>
+                <td><div style="font-weight:600;font-size:13px">${c.component_name}</div><div class="mono text-xs text-muted">${c.component_code}</div></td>
+                <td class="mono ${isHard ? 'text-red' : 'text-yellow'}">${Math.round(Number(c.available))}</td>
+                <td class="mono">${Math.round(Number(c.required))}</td>
+                <td class="mono text-red">${Math.round(Number(c.shortage))}</td>
+                <td>${isHard
+                  ? '<span class="badge badge-critical">⛔ Hard — No stock</span>'
+                  : '<span class="badge badge-delayed">⚠ Insufficient</span>'}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table></div>
+        </div>`;
+      }
+    }
+
+    loadRow.innerHTML = `<td colspan="${colspan}" style="background:var(--bg3);border-left:3px solid var(--yellow);padding:14px 20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700;color:var(--yellow)">Why was this order delayed?</div>
+        <div style="font-size:11px;color:var(--text3)">Promise date week: W${pWeek}/${pYear}</div>
+      </div>
+      ${reasonsHtml}
+    </td>`;
+
+    btnEl.textContent = 'Hide';
+    btnEl.disabled = false;
+  } catch(e) {
+    loadRow.remove();
+    btnEl.textContent = 'Why?';
+    btnEl.disabled = false;
+    toast('Could not load delay reason: ' + e.message, 'error');
+  }
+}
+
 function renderOptimizationResults(result) {
+  window._lastOptResult = result; // used by toggleWhyDelayed
   const s = result.summary;
   const orders = result.order_results || [];
   const caps = result.capacity_analysis || [];
@@ -2076,6 +2731,58 @@ function renderOptimizationResults(result) {
   const totalShortageCost = comps.reduce((a,c) => a + (parseInt(c.shortage_cost)||0), 0);
   const onTimePct = Number(s.on_time_percentage||0);
   const ontimeColor = onTimePct >= 80 ? 'var(--green)' : onTimePct >= 60 ? 'var(--yellow)' : 'var(--red)';
+
+  const runParams = (() => { try { return JSON.parse(result.run?.parameters || '{}'); } catch(e) { return {}; } })();
+  const runInfoHtml = `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:18px;align-items:center">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:18px">🧬</span>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--text1)">${result.run?.run_number || '—'}</div>
+          <div style="font-size:11px;color:var(--text3)">${result.run?.description || '—'}</div>
+        </div>
+      </div>
+      <div style="width:1px;height:36px;background:var(--border)"></div>
+      <div style="display:flex;flex-wrap:wrap;gap:14px">
+        <div style="display:flex;flex-direction:column;align-items:center;min-width:60px">
+          <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Location</span>
+          <span style="font-size:13px;font-weight:600;color:var(--accent2);font-family:var(--mono)">${result.run?.location_id || '—'}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;min-width:60px">
+          <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Population</span>
+          <span style="font-size:13px;font-weight:600;font-family:var(--mono)">${runParams.population_size ?? '—'}</span>
+        </div>
+        ${runParams.time_limit_hrs != null ? `
+        <div style="display:flex;flex-direction:column;align-items:center;min-width:60px">
+          <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Time Limit</span>
+          <span style="font-size:13px;font-weight:600;font-family:var(--mono)">${runParams.time_limit_hrs}h</span>
+        </div>` : `
+        <div style="display:flex;flex-direction:column;align-items:center;min-width:60px">
+          <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Generations</span>
+          <span style="font-size:13px;font-weight:600;font-family:var(--mono)">${runParams.generations ?? '—'}</span>
+        </div>`}
+        <div style="display:flex;flex-direction:column;align-items:center;min-width:60px">
+          <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Mutation</span>
+          <span style="font-size:13px;font-weight:600;font-family:var(--mono)">${runParams.mutation_rate != null ? Number(runParams.mutation_rate).toFixed(2) : '—'}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;min-width:60px">
+          <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Crossover</span>
+          <span style="font-size:13px;font-weight:600;font-family:var(--mono)">${runParams.crossover_rate != null ? Number(runParams.crossover_rate).toFixed(2) : '—'}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;min-width:60px">
+          <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Exec Time</span>
+          <span style="font-size:13px;font-weight:600;font-family:var(--mono)">${s.execution_time_ms}ms</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;min-width:80px">
+          <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Promise From</span>
+          <span style="font-size:13px;font-weight:600;font-family:var(--mono)">${runParams.promise_date_from || '—'}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;min-width:80px">
+          <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Promise To</span>
+          <span style="font-size:13px;font-weight:600;font-family:var(--mono)">${runParams.promise_date_to || '—'}</span>
+        </div>
+      </div>
+    </div>`;
 
   const metricsHtml = `
     <div class="result-grid-6" id="result-summary">
@@ -2108,10 +2815,17 @@ function renderOptimizationResults(result) {
 
   // Tab: Order Results
   const ordersTabHtml = `<div id="tab-orders"><div class="card"><div class="card-body" style="padding:0"><div class="table-wrap"><table>
-    <thead><tr><th>Order #</th><th>Customer</th><th>Product</th><th>Priority</th><th>Original Date</th><th>Optimized Date</th><th>Delay</th><th>Penalty</th><th>Status</th></tr></thead>
+    <thead><tr><th>Order #</th><th>Customer</th><th>Product</th><th>Priority</th><th>Original Date</th><th>Optimized Date</th><th>Week</th><th>Delay</th><th>Penalty</th><th>Feasibility</th><th>Status</th><th></th></tr></thead>
     <tbody>${orders.map(o => {
       const d = o.delay_days > 0;
-      return `<tr><td class="mono primary">${o.order_number}</td><td class="text-sm">${o.customer_name||'—'}</td><td class="text-sm">${o.product_name||'—'}</td><td>${fmt.priorityBadge(o.priority)}</td><td>${fmt.date(o.original_date)}</td><td class="${d?'text-yellow':'text-green'}">${fmt.date(o.optimized_date)}</td><td class="${d?'text-yellow':'text-green'}">${d?'+'+o.delay_days+'d':'✓ On Time'}</td><td class="${o.penalty_cost>0?'text-red':'text-green'}">${fmt.currency(o.penalty_cost)}</td><td><span class="badge ${d?'badge-delayed':'badge-ontime'}">${o.status}</span></td></tr>`;
+      const feasible = Number(o.feasible) === 1;
+      const feasBadge = feasible
+        ? `<span class="badge badge-ontime">✓ Feasible</span>`
+        : `<span class="badge badge-critical">✗ Infeasible</span>`;
+      const whyBtn = d
+        ? `<button class="btn" style="padding:3px 9px;font-size:11px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.5);color:var(--yellow)" onclick="event.stopPropagation();toggleWhyDelayed('${o.sales_order_id}','${o.original_date}',this)">Why?</button>`
+        : '';
+      return `<tr style="cursor:pointer" onclick="showOrderDetail('${o.sales_order_id}','${o.optimized_date}')" title="Click to view components & restrictions"><td class="mono primary">${o.order_number}</td><td class="text-sm">${o.customer_name||'—'}</td><td class="text-sm">${o.product_name||'—'}</td><td>${fmt.priorityBadge(o.priority)}</td><td>${fmt.date(o.original_date)}</td><td class="${d?'text-yellow':'text-green'}">${fmt.date(o.optimized_date)}</td><td class="mono text-xs ${d?'text-yellow':'text-green'}">${fmt.week(o.optimized_date)}</td><td class="${d?'text-yellow':'text-green'}">${d?'+'+o.delay_days+'d':'✓ On Time'}</td><td class="${o.penalty_cost>0?'text-red':'text-green'}">${fmt.currency(o.penalty_cost)}</td><td>${feasBadge}</td><td><span class="badge ${d?'badge-delayed':'badge-ontime'}">${o.status}</span></td><td style="white-space:nowrap">${whyBtn}</td></tr>`;
     }).join('')}</tbody>
   </table></div></div></div></div>`;
 
@@ -2175,133 +2889,295 @@ function renderOptimizationResults(result) {
   }</div>`;
 
   document.getElementById('opt-results-content').innerHTML =
-    metricsHtml + downloadHtml + tabsHtml + ordersTabHtml + capTabHtml + compTabHtml + constraintsTabHtml;
+    runInfoHtml + metricsHtml + downloadHtml + tabsHtml + ordersTabHtml + capTabHtml + compTabHtml + constraintsTabHtml;
 }
 async function downloadOptimizationResults(runId, section) {
   try {
     toast('Preparing Excel report...', 'info');
     const run = await api('GET', `/optimization-runs/${runId}`);
-    const wb = XLSX.utils.book_new();
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Order Planning System';
+    wb.created = new Date();
 
     const orders = run.order_results || [];
-    const caps = run.capacity_analysis || [];
-    const comps = run.component_analysis || [];
+    const caps   = run.capacity_analysis || [];
+    const comps  = run.component_analysis || [];
 
+    // ── Style constants ──────────────────────────────────────────────────────
+    const C = {
+      headerBg : 'FF1F3864', headerFg : 'FFFFFFFF',
+      rowNorm  : 'FFFFFFFF', rowAlt   : 'FFEBF3FB',
+      redBg    : 'FFFFCCCC', redFg    : 'FF8B0000',
+      greenBg  : 'FFD6F5E0', greenFg  : 'FF1A5C35',
+      labelBg  : 'FFD6E4F0', titleBg  : 'FF2E4057',
+      redHdrBg : 'FFC00000',
+    };
+    const thin = s => ({ style: 'thin', color: { argb: s || 'FFB0BEC5' } });
+    const border = { top: thin(), left: thin(), bottom: thin(), right: thin() };
+
+    function styleHeader(ws, numCols, redBg) {
+      const row = ws.getRow(1);
+      row.height = 22;
+      row.eachCell({ includeEmpty: true }, cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: redBg ? C.redHdrBg : C.headerBg } };
+        cell.font = { bold: true, color: { argb: C.headerFg }, size: 11, name: 'Calibri' };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.border = border;
+      });
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: numCols } };
+    }
+
+    function styleDataRow(row, idx, isRed, isGreen) {
+      row.height = 18;
+      const bg = isRed ? C.redBg : isGreen ? C.greenBg : idx % 2 === 0 ? C.rowNorm : C.rowAlt;
+      row.eachCell({ includeEmpty: true }, cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+        cell.font = {
+          color: { argb: isRed ? C.redFg : isGreen ? C.greenFg : 'FF000000' },
+          size: 10, name: 'Calibri',
+          bold: isRed
+        };
+        cell.border = border;
+        cell.alignment = { vertical: 'middle' };
+      });
+    }
+
+    // ── Orders Sheet ─────────────────────────────────────────────────────────
     if (section === 'orders' || section === 'all') {
       const rows = orders.map(o => ({
         order_number: o.order_number, customer: o.customer_name, product: o.product_name,
         priority: o.priority, original_date: o.original_date, optimized_date: o.optimized_date,
+        week: fmt.week(o.optimized_date),
         delay_days: o.delay_days, penalty_cost: o.penalty_cost, status: o.status,
         feasible: o.feasible ? 'Yes' : 'No'
       }));
       if (rows.length) {
-        const ws = XLSX.utils.json_to_sheet(rows);
-        ws['!cols'] = Object.keys(rows[0]).map(() => ({ wch: 18 }));
-        XLSX.utils.book_append_sheet(wb, ws, 'OrderResults');
+        const ws = wb.addWorksheet('OrderResults', { tabColor: { argb: 'FF1F3864' } });
+        ws.columns = [
+          { header: 'Order Number',   key: 'order_number',   width: 18 },
+          { header: 'Customer',        key: 'customer',        width: 24 },
+          { header: 'Product',         key: 'product',         width: 24 },
+          { header: 'Priority',        key: 'priority',        width: 12 },
+          { header: 'Original Date',   key: 'original_date',   width: 16 },
+          { header: 'Optimized Date',  key: 'optimized_date',  width: 16 },
+          { header: 'Week',            key: 'week',            width: 10 },
+          { header: 'Delay (Days)',    key: 'delay_days',      width: 14 },
+          { header: 'Penalty Cost',    key: 'penalty_cost',    width: 16 },
+          { header: 'Status',          key: 'status',          width: 14 },
+          { header: 'Feasible',        key: 'feasible',        width: 12 },
+        ];
+        styleHeader(ws, 11);
+        rows.forEach((r, i) => {
+          const row = ws.addRow(r);
+          const isDelayed = Number(r.delay_days) > 0 || r.status === 'delayed';
+          const isOnTime  = r.feasible === 'Yes' && !isDelayed;
+          styleDataRow(row, i, isDelayed, isOnTime);
+          row.getCell('delay_days').alignment   = { horizontal: 'right',  vertical: 'middle' };
+          row.getCell('penalty_cost').alignment = { horizontal: 'right',  vertical: 'middle' };
+          row.getCell('priority').alignment     = { horizontal: 'center', vertical: 'middle' };
+          row.getCell('feasible').alignment     = { horizontal: 'center', vertical: 'middle' };
+        });
       }
     }
 
+    // ── Capacity Sheets ──────────────────────────────────────────────────────
     if (section === 'capacity' || section === 'all') {
       const rows = caps.map(c => ({
         restriction_name: c.restriction_name, restriction_code: c.restriction_code,
         year: c.year, week: c.week, capacity: c.capacity,
-        required: Math.round(c.required_capacity||0),
-        utilization_pct: Number(c.utilization_pct||0).toFixed(1),
-        over_capacity: Math.round(c.over_capacity||0),
-        violation_cost: c.violation_cost||0,
+        required: Math.round(c.required_capacity || 0),
+        utilization_pct: Number(c.utilization_pct || 0).toFixed(1),
+        over_capacity: Math.round(c.over_capacity || 0),
+        violation_cost: c.violation_cost || 0,
         is_violation: c.is_critical ? 'YES' : 'No'
       }));
+      const capCols = [
+        { header: 'Restriction Name',  key: 'restriction_name',  width: 26 },
+        { header: 'Restriction Code',  key: 'restriction_code',  width: 18 },
+        { header: 'Year',              key: 'year',              width: 10 },
+        { header: 'Week',              key: 'week',              width: 10 },
+        { header: 'Capacity',          key: 'capacity',          width: 14 },
+        { header: 'Required',          key: 'required',          width: 14 },
+        { header: 'Utilization %',     key: 'utilization_pct',   width: 16 },
+        { header: 'Over Capacity',     key: 'over_capacity',     width: 16 },
+        { header: 'Violation Cost',    key: 'violation_cost',    width: 16 },
+        { header: 'Violation?',        key: 'is_violation',      width: 13 },
+      ];
+      const numAlignCap = ['year','week','capacity','required','utilization_pct','over_capacity','violation_cost'];
       if (rows.length) {
-        const ws = XLSX.utils.json_to_sheet(rows);
-        ws['!cols'] = Object.keys(rows[0]).map(() => ({ wch: 20 }));
-        XLSX.utils.book_append_sheet(wb, ws, 'CapacityAnalysis');
-      }
-      // Violations only sheet
-      const viols = rows.filter(r => r.is_violation === 'YES');
-      if (viols.length) {
-        const ws2 = XLSX.utils.json_to_sheet(viols);
-        ws2['!cols'] = Object.keys(viols[0]).map(() => ({ wch: 20 }));
-        XLSX.utils.book_append_sheet(wb, ws2, 'CapacityViolations');
+        const ws = wb.addWorksheet('CapacityAnalysis', { tabColor: { argb: 'FF0070C0' } });
+        ws.columns = capCols;
+        styleHeader(ws, 10);
+        rows.forEach((r, i) => {
+          const row = ws.addRow(r);
+          styleDataRow(row, i, r.is_violation === 'YES', false);
+          numAlignCap.forEach(k => { row.getCell(k).alignment = { horizontal: 'right', vertical: 'middle' }; });
+          row.getCell('is_violation').alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+
+        const viols = rows.filter(r => r.is_violation === 'YES');
+        if (viols.length) {
+          const ws2 = wb.addWorksheet('CapacityViolations', { tabColor: { argb: C.redHdrBg } });
+          ws2.columns = capCols.map(c => ({ ...c }));
+          styleHeader(ws2, 10, true);
+          viols.forEach((r, i) => {
+            const row = ws2.addRow(r);
+            styleDataRow(row, i, true, false);
+            numAlignCap.forEach(k => { row.getCell(k).alignment = { horizontal: 'right', vertical: 'middle' }; });
+            row.getCell('is_violation').alignment = { horizontal: 'center', vertical: 'middle' };
+          });
+        }
       }
     }
 
+    // ── Component Sheets ─────────────────────────────────────────────────────
     if (section === 'components' || section === 'all') {
       const rows = comps.map(c => ({
         component_name: c.component_name, component_code: c.component_code,
-        year: c.year, week: c.week, available: Math.round(c.available||0),
-        required: Math.round(c.required||0), shortage: Math.round(c.shortage||0),
-        shortage_cost: c.shortage_cost||0, is_critical: c.is_critical ? 'YES' : 'No'
+        year: c.year, week: c.week, available: Math.round(c.available || 0),
+        required: Math.round(c.required || 0), shortage: Math.round(c.shortage || 0),
+        shortage_cost: c.shortage_cost || 0, is_critical: c.is_critical ? 'YES' : 'No'
       }));
+      const compCols = [
+        { header: 'Component Name',  key: 'component_name',  width: 26 },
+        { header: 'Component Code',  key: 'component_code',  width: 18 },
+        { header: 'Year',            key: 'year',            width: 10 },
+        { header: 'Week',            key: 'week',            width: 10 },
+        { header: 'Available',       key: 'available',       width: 14 },
+        { header: 'Required',        key: 'required',        width: 14 },
+        { header: 'Shortage',        key: 'shortage',        width: 14 },
+        { header: 'Shortage Cost',   key: 'shortage_cost',   width: 16 },
+        { header: 'Critical?',       key: 'is_critical',     width: 12 },
+      ];
+      const numAlignComp = ['year','week','available','required','shortage','shortage_cost'];
       if (rows.length) {
-        const ws = XLSX.utils.json_to_sheet(rows);
-        ws['!cols'] = Object.keys(rows[0]).map(() => ({ wch: 20 }));
-        XLSX.utils.book_append_sheet(wb, ws, 'ComponentAnalysis');
-      }
-      const shorts = rows.filter(r => r.is_critical === 'YES');
-      if (shorts.length) {
-        const ws2 = XLSX.utils.json_to_sheet(shorts);
-        ws2['!cols'] = Object.keys(shorts[0]).map(() => ({ wch: 20 }));
-        XLSX.utils.book_append_sheet(wb, ws2, 'ComponentShortages');
+        const ws = wb.addWorksheet('ComponentAnalysis', { tabColor: { argb: 'FF7030A0' } });
+        ws.columns = compCols;
+        styleHeader(ws, 9);
+        rows.forEach((r, i) => {
+          const row = ws.addRow(r);
+          styleDataRow(row, i, r.is_critical === 'YES', false);
+          numAlignComp.forEach(k => { row.getCell(k).alignment = { horizontal: 'right', vertical: 'middle' }; });
+          row.getCell('is_critical').alignment = { horizontal: 'center', vertical: 'middle' };
+        });
+
+        const shorts = rows.filter(r => r.is_critical === 'YES');
+        if (shorts.length) {
+          const ws2 = wb.addWorksheet('ComponentShortages', { tabColor: { argb: C.redHdrBg } });
+          ws2.columns = compCols.map(c => ({ ...c }));
+          styleHeader(ws2, 9, true);
+          shorts.forEach((r, i) => {
+            const row = ws2.addRow(r);
+            styleDataRow(row, i, true, false);
+            numAlignComp.forEach(k => { row.getCell(k).alignment = { horizontal: 'right', vertical: 'middle' }; });
+            row.getCell('is_critical').alignment = { horizontal: 'center', vertical: 'middle' };
+          });
+        }
       }
     }
 
     if (section === 'all') {
-      // Weekly_Schedule sheet — one row per (order × restriction × component)
+      // ── Weekly Schedule Sheet ────────────────────────────────────────────
       const orderDetails = await Promise.all(
         orders.map(o => api('GET', `/sales-orders/${o.sales_order_id}`).catch(() => null))
       );
       const schedRows = [];
       orders.forEach((o, i) => {
-        const det = orderDetails[i] || {};
+        const det   = orderDetails[i] || {};
         const rests = (det.restrictions && det.restrictions.length) ? det.restrictions : [{}];
-        const comps = (det.components && det.components.length) ? det.components : [{}];
-        const qty = Number(o.quantity || det.quantity || 0);
+        const cdet  = (det.components  && det.components.length)  ? det.components  : [{}];
+        const qty   = Number(o.quantity || det.quantity || 0);
         rests.forEach(r => {
-          comps.forEach(c => {
+          cdet.forEach(c => {
             schedRows.push({
-              order_number: o.order_number,
-              product_name: o.product_name || det.product_name || '',
-              scheduled_date: o.optimized_date,
-              restriction: r.restriction_code ? `${r.restriction_name||''} (${r.restriction_code})` : '',
+              order_number:    o.order_number,
+              product_name:    o.product_name || det.product_name || '',
+              scheduled_date:  o.optimized_date,
+              week:            fmt.week(o.optimized_date),
+              restriction:     r.restriction_code ? `${r.restriction_name || ''} (${r.restriction_code})` : '',
               restriction_qty: r.capacity_usage_per_unit != null ? Number(r.capacity_usage_per_unit) * qty : '',
-              component: c.component_code ? `${c.component_name||''} (${c.component_code})` : '',
-              component_qty: c.required_qty_per_unit != null ? Number(c.required_qty_per_unit) * qty : ''
+              component:       c.component_code ? `${c.component_name || ''} (${c.component_code})` : '',
+              component_qty:   c.required_qty_per_unit != null ? Number(c.required_qty_per_unit) * qty : ''
             });
           });
         });
       });
       if (schedRows.length) {
-        const ws = XLSX.utils.json_to_sheet(schedRows);
-        ws['!cols'] = Object.keys(schedRows[0]).map(() => ({ wch: 22 }));
-        XLSX.utils.book_append_sheet(wb, ws, 'Weekly_Schedule');
+        const ws = wb.addWorksheet('Weekly_Schedule', { tabColor: { argb: 'FF00B050' } });
+        ws.columns = [
+          { header: 'Order Number',    key: 'order_number',    width: 18 },
+          { header: 'Product',         key: 'product_name',    width: 26 },
+          { header: 'Scheduled Date',  key: 'scheduled_date',  width: 18 },
+          { header: 'Week',            key: 'week',            width: 10 },
+          { header: 'Restriction',     key: 'restriction',     width: 30 },
+          { header: 'Restriction Qty', key: 'restriction_qty', width: 18 },
+          { header: 'Component',       key: 'component',       width: 30 },
+          { header: 'Component Qty',   key: 'component_qty',   width: 18 },
+        ];
+        styleHeader(ws, 8);
+        schedRows.forEach((r, i) => {
+          const row = ws.addRow(r);
+          styleDataRow(row, i, false, false);
+          ['restriction_qty', 'component_qty'].forEach(k => {
+            row.getCell(k).alignment = { horizontal: 'right', vertical: 'middle' };
+          });
+        });
       }
 
-      // Summary sheet
+      // ── Summary Sheet ────────────────────────────────────────────────────
+      const wsSummary = wb.addWorksheet('Summary', { tabColor: { argb: C.headerBg } });
+      wsSummary.columns = [{ key: 'label', width: 30 }, { key: 'value', width: 32 }];
+      wsSummary.mergeCells('A1:B1');
+      const titleCell = wsSummary.getCell('A1');
+      titleCell.value = `Optimization Run #${run.run_number} — Summary`;
+      titleCell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.titleBg } };
+      titleCell.font  = { bold: true, size: 14, color: { argb: 'FFFFFFFF' }, name: 'Calibri' };
+      titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+      wsSummary.getRow(1).height = 30;
+
       const summaryData = [
-        ['Run Number', run.run_number],
-        ['Description', run.description || ''],
-        ['Run Date', run.run_date],
-        ['Status', run.status],
-        ['Total Orders', run.total_orders || 0],
-        ['On-Time Orders', run.on_time_orders || 0],
-        ['Delayed Orders', run.delayed_orders || 0],
-        ['On-Time %', Number(run.on_time_percentage||0).toFixed(1) + '%'],
-        ['Total Penalty Cost', '$' + Number(run.total_penalty_cost||0).toLocaleString()],
-        ['Avg Delay (days)', Number(run.avg_delay_days||0).toFixed(1)],
-        ['Max Delay (days)', run.max_delay_days || 0],
-        ['Capacity Violations', caps.filter(c=>c.is_critical).length],
-        ['Component Shortages', comps.filter(c=>c.is_critical).length],
+        ['Run Number',          run.run_number],
+        ['Description',         run.description || '—'],
+        ['Run Date',            run.run_date],
+        ['Status',              run.status],
+        ['Total Orders',        run.total_orders || 0],
+        ['On-Time Orders',      run.on_time_orders || 0],
+        ['Delayed Orders',      run.delayed_orders || 0],
+        ['On-Time %',           Number(run.on_time_percentage || 0).toFixed(1) + '%'],
+        ['Total Penalty Cost',  '$' + Number(run.total_penalty_cost || 0).toLocaleString()],
+        ['Avg Delay (days)',     Number(run.avg_delay_days || 0).toFixed(1)],
+        ['Max Delay (days)',     run.max_delay_days || 0],
+        ['Capacity Violations', caps.filter(c => c.is_critical).length],
+        ['Component Shortages', comps.filter(c => c.is_critical).length],
         ['Execution Time (ms)', run.execution_time_ms || 0],
       ];
-      const ws = XLSX.utils.aoa_to_sheet(summaryData);
-      ws['!cols'] = [{ wch: 28 }, { wch: 30 }];
-      XLSX.utils.book_append_sheet(wb, ws, 'Summary');
+      summaryData.forEach(([label, value], i) => {
+        const row = wsSummary.addRow({ label, value });
+        row.height = 20;
+        const lCell = row.getCell('label');
+        const vCell = row.getCell('value');
+        lCell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.labelBg } };
+        lCell.font      = { bold: true, size: 11, name: 'Calibri' };
+        lCell.border    = border;
+        lCell.alignment = { vertical: 'middle' };
+        vCell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: i % 2 === 0 ? C.rowNorm : C.rowAlt } };
+        vCell.font      = { size: 11, name: 'Calibri' };
+        vCell.border    = border;
+        vCell.alignment = { vertical: 'middle' };
+      });
     }
 
-    if (!wb.SheetNames.length) { toast('No data available for this run', 'error'); return; }
+    if (!wb.worksheets.length) { toast('No data available for this run', 'error'); return; }
 
-    const fname = `opt-results-${run.run_number}-${section}-${new Date().toISOString().split('T')[0]}.xlsx`;
-    XLSX.writeFile(wb, fname);
+    const fname  = `opt-results-${run.run_number}-${section}-${new Date().toISOString().split('T')[0]}.xlsx`;
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob   = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url    = URL.createObjectURL(blob);
+    const a      = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
     toast(`Downloaded: ${fname}`, 'success');
   } catch(e) { toast('Download failed: ' + e.message, 'error'); }
 }
@@ -2314,6 +3190,116 @@ function switchTab(tab) {
   document.querySelectorAll('#result-tabs .tab').forEach((t,i) => {
     t.classList.toggle('active', ['orders','capacity','comps','constraints'][i] === tab);
   });
+}
+
+// ===== Order Detail Modal =====
+async function showOrderDetail(salesOrderId, optimizedDate) {
+  document.getElementById('order-detail-title').textContent = 'Loading…';
+  document.getElementById('order-detail-body').innerHTML =
+    '<div style="text-align:center;padding:40px"><div class="spinner" style="width:28px;height:28px;margin:auto"></div></div>';
+  openModal('modal-order-detail');
+  try {
+    const o = await api('GET', `/sales-orders/${salesOrderId}`);
+    document.getElementById('order-detail-title').textContent = `Execution Plan — Order ${o.order_number}`;
+
+    const qty = Number(o.quantity) || 0;
+    const dateLabel = fmt.date(optimizedDate);
+    const promiseLabel = fmt.date(o.promise_date);
+    const isDelayed = optimizedDate && o.promise_date && optimizedDate > o.promise_date;
+
+    // ── Order summary strip ──────────────────────────────────────────────────
+    const summaryHtml = `
+      <div style="display:flex;flex-wrap:wrap;gap:10px;padding:14px 16px;background:var(--bg3);border-radius:8px;margin-bottom:18px;border:1px solid var(--border)">
+        <div style="flex:1;min-width:130px"><div class="text-xs text-muted" style="margin-bottom:3px">CUSTOMER</div><div style="font-weight:600;font-size:13px">${o.customer_name||'—'}</div></div>
+        <div style="flex:1;min-width:130px"><div class="text-xs text-muted" style="margin-bottom:3px">PRODUCT</div><div style="font-weight:600;font-size:13px">${o.product_name||'—'}</div></div>
+        <div style="flex:1;min-width:80px"><div class="text-xs text-muted" style="margin-bottom:3px">PRIORITY</div><div>${fmt.priorityBadge(o.priority)}</div></div>
+        <div style="flex:1;min-width:80px"><div class="text-xs text-muted" style="margin-bottom:3px">QUANTITY</div><div class="mono" style="font-size:13px">${qty}</div></div>
+        <div style="flex:1;min-width:140px"><div class="text-xs text-muted" style="margin-bottom:3px">PROMISE DATE</div><div class="mono" style="font-size:13px">${promiseLabel}</div></div>
+      </div>`;
+
+    // ── Processing date banner ───────────────────────────────────────────────
+    const dateBannerHtml = `
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;
+                  background:${isDelayed ? 'rgba(255,200,0,0.08)' : 'rgba(30,200,126,0.08)'};
+                  border:1px solid ${isDelayed ? 'var(--yellow)' : 'var(--green)'};
+                  border-radius:8px;margin-bottom:18px">
+        <span style="font-size:22px">📅</span>
+        <div>
+          <div class="text-xs text-muted" style="margin-bottom:2px">SCHEDULED PROCESSING DATE</div>
+          <div style="font-size:18px;font-weight:700;font-family:var(--mono);color:${isDelayed ? 'var(--yellow)' : 'var(--green)'}">
+            ${dateLabel}
+            ${isDelayed ? '<span style="font-size:11px;font-weight:400;margin-left:8px;color:var(--yellow)">⚠ Delayed from promise date</span>' : '<span style="font-size:11px;font-weight:400;margin-left:8px;color:var(--green)">✓ On time</span>'}
+          </div>
+        </div>
+      </div>`;
+
+    // ── Restrictions executed on this date ───────────────────────────────────
+    const restrictionsHtml = (o.restrictions && o.restrictions.length)
+      ? `<div class="table-wrap"><table style="width:100%">
+          <thead><tr>
+            <th>Restriction (Machine / Resource)</th>
+            <th>Code</th>
+            <th style="text-align:right">Cap. / Unit</th>
+            <th style="text-align:right">Total Capacity Used</th>
+            <th>Processing Date</th>
+          </tr></thead>
+          <tbody>${o.restrictions.map(r => {
+            const perUnit = Number(r.capacity_usage_per_unit) || 0;
+            const total   = perUnit * qty;
+            return `<tr>
+              <td style="font-weight:600">${r.restriction_name}</td>
+              <td class="mono text-xs text-muted">${r.restriction_code}</td>
+              <td class="mono" style="text-align:right">${perUnit}</td>
+              <td class="mono text-accent" style="text-align:right;font-weight:600">${total.toLocaleString()}</td>
+              <td class="mono" style="color:${isDelayed?'var(--yellow)':'var(--green)'}">${dateLabel}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table></div>`
+      : '<p class="text-muted text-sm" style="margin:0">No restrictions linked to this order.</p>';
+
+    // ── Components consumed on this date ─────────────────────────────────────
+    const componentsHtml = (o.components && o.components.length)
+      ? `<div class="table-wrap"><table style="width:100%">
+          <thead><tr>
+            <th>Component (Raw Material)</th>
+            <th>Code</th>
+            <th style="text-align:right">Qty / Unit</th>
+            <th style="text-align:right">Total Qty Consumed</th>
+            <th style="text-align:right">Material Cost</th>
+            <th>Consumption Date</th>
+          </tr></thead>
+          <tbody>${o.components.map(c => {
+            const perUnit   = Number(c.required_qty_per_unit) || 0;
+            const totalQty  = perUnit * qty;
+            const unitCost  = Number(c.unit_cost) || 0;
+            const totalCost = unitCost * totalQty;
+            return `<tr>
+              <td style="font-weight:600">${c.component_name}</td>
+              <td class="mono text-xs text-muted">${c.component_code}</td>
+              <td class="mono" style="text-align:right">${perUnit}</td>
+              <td class="mono text-accent" style="text-align:right;font-weight:600">${totalQty.toLocaleString()}</td>
+              <td class="mono" style="text-align:right">${unitCost > 0 ? fmt.currency(totalCost) : '—'}</td>
+              <td class="mono" style="color:${isDelayed?'var(--yellow)':'var(--green)'}">${dateLabel}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table></div>`
+      : '<p class="text-muted text-sm" style="margin:0">No components linked to this order.</p>';
+
+    document.getElementById('order-detail-body').innerHTML = `
+      ${summaryHtml}
+      ${dateBannerHtml}
+      <div style="margin-bottom:18px">
+        <div style="font-weight:700;font-size:12px;letter-spacing:.06em;color:var(--text3);margin-bottom:10px">⚙ RESTRICTIONS EXECUTED ON THIS DATE</div>
+        ${restrictionsHtml}
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:12px;letter-spacing:.06em;color:var(--text3);margin-bottom:10px">🔩 COMPONENTS CONSUMED ON THIS DATE</div>
+        ${componentsHtml}
+      </div>`;
+  } catch(e) {
+    document.getElementById('order-detail-body').innerHTML =
+      `<div class="text-red text-sm">Failed to load order details: ${e.message}</div>`;
+  }
 }
 
 // ===== View Run Detail =====
@@ -2398,6 +3384,7 @@ async function viewRunDetail(id) {
         <div style="font-size:14px;font-weight:700;color:var(--accent2)">Viewing: ${run.run_number}</div>
         <div class="text-sm text-muted" style="margin-top:4px">${run.description||''} · ${new Date(run.run_date).toLocaleString()}</div>
       </div>`;
+    fetchAndRenderFitnessChart(run.id);
     renderOptimizationResults(result);
     document.getElementById('opt-results-section').style.display = 'block';
     toast(`Loaded run ${run.run_number}`, 'info');
@@ -2409,7 +3396,7 @@ async function viewRunDetail(id) {
 
 // ===== Init =====
 document.addEventListener('DOMContentLoaded', () => {
-  Pages.dashboard();
+  openLocationModal();
   // Pre-load penalty modal products
   api('GET', '/products').then(prods => {
     document.getElementById('pen-product').innerHTML =
@@ -2879,11 +3866,11 @@ const IE = (() => {
         rows = data.map(r => pick(r, TEMPLATES.customers.cols));
         sheetName = 'Customers';
       } else if (key === 'restrictions') {
-        const data = await api('GET', '/restrictions');
+        const data = await api('GET', locPath('/restrictions'));
         rows = data.map(r => pick(r, TEMPLATES.restrictions.cols));
         sheetName = 'Restrictions';
       } else if (key === 'weekly_capacities') {
-        const restrs = await api('GET', '/restrictions');
+        const restrs = await api('GET', locPath('/restrictions'));
         rows = [];
         for (const r of restrs) {
           for (const wc of (r.weekly_capacities || [])) {
@@ -2892,11 +3879,11 @@ const IE = (() => {
         }
         sheetName = 'WeeklyCapacities';
       } else if (key === 'components') {
-        const data = await api('GET', '/components');
+        const data = await api('GET', locPath('/components'));
         rows = data.map(r => pick(r, TEMPLATES.components.cols));
         sheetName = 'Components';
       } else if (key === 'component_availability') {
-        const data = await api('GET', '/components');
+        const data = await api('GET', locPath('/components'));
         rows = [];
         for (const c of data) {
           for (const a of (c.availability || [])) {
@@ -2906,7 +3893,7 @@ const IE = (() => {
         }
         sheetName = 'ComponentAvailability';
       } else if (key === 'orders') {
-        const data = await api('GET', '/sales-orders');
+        const data = await api('GET', locPath('/sales-orders'));
         rows = data.map(r => ({
           order_number: r.order_number, customer_code: r.customer_code,
           product_code: r.product_code, promise_date: r.promise_date,
@@ -2941,9 +3928,9 @@ const IE = (() => {
       const [products, customers, restrictions, components, orders, penalties] = await Promise.all([
         api('GET', '/products'),
         api('GET', '/customers'),
-        api('GET', '/restrictions'),
-        api('GET', '/components'),
-        api('GET', '/sales-orders'),
+        api('GET', locPath('/restrictions')),
+        api('GET', locPath('/components')),
+        api('GET', locPath('/sales-orders')),
         api('GET', '/penalty-rules')
       ]);
 
@@ -3268,6 +4255,8 @@ const IE = (() => {
 
     // 🔹 Build payload
     const payload = [];
+    
+
 
     for (const row of rows) {
       try {

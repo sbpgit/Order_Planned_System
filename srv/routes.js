@@ -9,6 +9,9 @@ const { OrderPlanningOptimizer } = require('./optimizer');
 const { seedData }               = require('./seedData');
 const router = express.Router();
 
+// ─── ACTIVE RUNS: in-memory abort signals for running optimizations ──────────
+const activeRuns = new Map(); // runId -> { aborted: false }
+
 // ─── OPTIMIZATION LOCK: block data mutations while an optimization is running ─
 async function isOptimizationRunning() {
   try {
@@ -23,6 +26,7 @@ async function guardDataMutation(req, res, next) {
   // Only guard POST/PUT/DELETE, skip optimize endpoint itself and GET requests
   if (req.method === 'GET') return next();
   if (req.path === '/optimize') return next();
+  if (/^\/optimize\/.+\/stop$/.test(req.path)) return next();
   // Skip read-only post endpoints (exports, etc.) — none currently exist
   try {
     if (await isOptimizationRunning()) {
@@ -179,7 +183,9 @@ router.delete('/customers/:id', async (req, res) => {
 // ─── RESTRICTIONS ─────────────────────────────────────────────────────────────
 router.get('/restrictions', async (req, res) => {
   try {
-    const restrictions = await db.findAll('restrictions', {}, 'name ASC');
+    const { locationId } = req.query;
+    const where = locationId ? { location_id: locationId } : {};
+    const restrictions = await db.findAll('restrictions', where, 'name ASC');
     for (const r of restrictions)
       r.weekly_capacities = await db.findAll('weekly_capacities',
         { restriction_id: r.id }, 'year ASC, week ASC');
@@ -341,7 +347,9 @@ router.post('/weekly_capacities_bulk', async (req, res) => {
 // ─── COMPONENTS ───────────────────────────────────────────────────────────────
 router.get('/components', async (req, res) => {
   try {
-    const components = await db.findAll('components', {}, 'name ASC');
+    const { locationId } = req.query;
+    const where = locationId ? { location_id: locationId } : {};
+    const components = await db.findAll('components', where, 'name ASC');
     for (const c of components)
       c.availability = await db.findAll('component_availability',
         { component_id: c.id }, 'year ASC, week ASC');
@@ -556,13 +564,17 @@ router.delete('/penalty-rules/:id', async (req, res) => {
 // ─── SALES ORDERS ─────────────────────────────────────────────────────────────
 router.get('/sales-orders', async (req, res) => {
   try {
+    const { locationId } = req.query;
+    const whereClause = locationId ? `WHERE so.location_id = ?` : '';
+    const params = locationId ? [locationId] : [];
     res.json(await db.queryAll(`
       SELECT so.*, c.name AS customer_name, c.priority AS customer_priority,
              c.customer_code, p.name AS product_name, p.product_code
       FROM   sales_orders so
       LEFT JOIN customers c ON so.customer_id = c.id
       LEFT JOIN products  p ON so.product_id  = p.id
-      ORDER BY so.promise_date ASC`));
+      ${whereClause}
+      ORDER BY so.promise_date ASC`, params));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -898,11 +910,15 @@ router.post('/order_components_bulk', async (req, res) => {
 router.post('/optimize', async (req, res) => {
   const startTime = Date.now();
   const {
-    description    = 'Planning Run',
+    description     = 'Planning Run',
     population_size = 50,
-    generations     = 100,
+    generations,
+    time_limit_hrs,
     mutation_rate   = 0.1,
-    crossover_rate  = 0.8
+    crossover_rate  = 0.8,
+    locationId,
+    promise_date_from,
+    promise_date_to
   } = req.body;
 
   const runId     = uuidv4();
@@ -910,22 +926,29 @@ router.post('/optimize', async (req, res) => {
 
   try {
     await db.insert('optimization_runs', {
-      id: runId, run_number: runNumber, description,
+      id: runId, run_number: runNumber, description, location_id: locationId || null,
       status: 'Running', run_date: new Date(),
-      parameters: JSON.stringify({ population_size, generations, mutation_rate, crossover_rate })
+      parameters: JSON.stringify({ population_size, generations, time_limit_hrs: time_limit_hrs || null, mutation_rate, crossover_rate, promise_date_from: promise_date_from || null, promise_date_to: promise_date_to || null })
     });
 
-    const orders       = await db.getOrdersWithDetails();
-    console.log(orders);
-    const restrictions = await db.getRestrictionsWithCapacity();
-    console.log(restrictions);
-    const components   = await db.getComponentsWithAvailability();
-    console.log(components);
+    const orders       = await db.getOrdersWithDetails(locationId, promise_date_from, promise_date_to);
+    const restrictions = await db.getRestrictionsWithCapacity(locationId);
+    const components   = await db.getComponentsWithAvailability(locationId);
     const penaltyRules = await db.findAll('penalty_rules');
     console.log(penaltyRules);
     if (orders.length === 0) {
       await db.update('optimization_runs', runId, { status: 'Failed' });
       return res.status(400).json({ error: 'No open orders found' });
+    }
+
+    if (restrictions.length === 0) {
+      await db.update('optimization_runs', runId, { status: 'Failed' });
+      return res.status(400).json({ error: 'No restrictions found' });
+    }
+
+    if (components.length === 0) {
+      await db.update('optimization_runs', runId, { status: 'Failed' });
+      return res.status(400).json({ error: 'No components found' });
     }
 
     // ── Pre-validation: reject if ALL weekly capacities are 0 for any restriction ──
@@ -953,123 +976,146 @@ router.post('/optimize', async (req, res) => {
     await db.runStmt('UPDATE OPS_OPTIMIZATION_RUNS SET total_orders=? WHERE id=?', [orders.length, runId]);
 
     const optimizer = new OrderPlanningOptimizer({
-      populationSize: population_size, generations,
-      mutationRate: mutation_rate, crossoverRate: crossover_rate
-    });
-    const result = await optimizer.optimize(orders, restrictions, components, penaltyRules);
-    console.log(result);
-    let onTimeCount = 0, totalDelay = 0, maxDelay = 0;
-
-    const infeasibleSet = new Set(result.details.infeasibleOrderIds || []);
-    for (const order of orders) {
-      const optimizedDate = result.bestSolution[order.id];
-      const originalDate  = order.promise_date;
-      const delayDays     = moment(optimizedDate).diff(moment(originalDate), 'days');
-      const penaltyCost   = result.details.orderPenalties?.[order.id] || 0;
-      const isInfeasible  = infeasibleSet.has(order.id);
-
-      if (!isInfeasible && delayDays <= 0) onTimeCount++;
-      else if (!isInfeasible) { totalDelay += delayDays; maxDelay = Math.max(maxDelay, delayDays); }
-
-      await db.insert('optimization_results', {
-        id: uuidv4(), run_id: runId, sales_order_id: order.id,
-        original_date: originalDate, optimized_date: optimizedDate,
-        delay_days: delayDays, penalty_cost: penaltyCost,
-        feasible: isInfeasible ? 0 : (delayDays <= 28 ? 1 : 0),
-        status: isInfeasible ? 'Infeasible' : (delayDays <= 0 ? 'On Time' : `Delayed ${delayDays}d`)
-      });
-    }
-
-    for (const [restId, weeklyUsage] of Object.entries(result.details.weeklyCapacityUsage || {})) {
-      const restriction = restrictions.find(r => r.id === restId);
-      for (const [weekKey, usage] of Object.entries(weeklyUsage)) {
-        const [yr, wk]  = weekKey.split('-').map(Number);
-        const capEntry  = restriction?.weekly_capacities?.find(c => c.year === yr && c.week === wk);
-        const capacity  = capEntry?.capacity || 0;
-        const overCap   = Math.max(0, usage - capacity);
-        await db.insert('capacity_analysis', {
-          id: uuidv4(), run_id: runId, restriction_id: restId,
-          year: yr, week: wk, capacity, required_capacity: usage,
-          utilization_pct: capacity > 0 ? (usage / capacity) * 100 : 100,
-          over_capacity: overCap,
-          violation_cost: overCap * (restriction?.penalty_cost_per_unit || 100),
-          is_critical: overCap > 0 ? 1 : 0
-        });
-      }
-    }
-
-    for (const [compId, weeklyUsage] of Object.entries(result.details.weeklyComponentUsage || {})) {
-      const component = components.find(c => c.id === compId);
-      for (const [weekKey, required] of Object.entries(weeklyUsage)) {
-        const [yr, wk]   = weekKey.split('-').map(Number);
-        const availEntry = component?.availability?.find(a => a.year === yr && a.week === wk);
-        const available  = availEntry?.available_qty || 0;
-        const shortage   = Math.max(0, required - available);
-        await db.insert('component_analysis', {
-          id: uuidv4(), run_id: runId, component_id: compId,
-          year: yr, week: wk, available, required,
-          shortage, shortage_cost: shortage * (component?.unit_cost || 10) * 3,
-          is_critical: shortage > 0 ? 1 : 0
-        });
-      }
-    }
-
-    const avgDelay  = orders.length > 0 ? totalDelay / orders.length : 0;
-    const onTimePct = orders.length > 0 ? (onTimeCount / orders.length) * 100 : 0;
-    const execTime  = Date.now() - startTime;
-
-    await db.update('optimization_runs', runId, {
-      status: 'Completed', on_time_orders: onTimeCount,
-      delayed_orders: orders.length - onTimeCount,
-      total_penalty_cost: result.bestFitness, on_time_percentage: onTimePct,
-      avg_delay_days: avgDelay, max_delay_days: maxDelay, execution_time_ms: execTime
+      populationSize: population_size,
+      generations,
+      timeLimitHrs: time_limit_hrs || null,
+      mutationRate: mutation_rate,
+      crossoverRate: crossover_rate
     });
 
-    const runData = await db.findOne('optimization_runs', { id: runId });
+    // Respond immediately — optimization runs in background so proxy timeouts don't kill it
+    const signal = { aborted: false };
+    activeRuns.set(runId, signal);
+    res.json({ runId, runNumber, status: 'Running' });
 
-    const resultRows = await db.queryAll(`
-      SELECT or2.*, so.order_number, so.promise_date, so.quantity, so.priority,
-             c.name AS customer_name, p.name AS product_name
-      FROM   optimization_results or2
-      JOIN   sales_orders so ON or2.sales_order_id = so.id
-      LEFT JOIN customers c  ON so.customer_id = c.id
-      LEFT JOIN products  p  ON so.product_id  = p.id
-      WHERE  or2.run_id = ?
-      ORDER BY or2.delay_days DESC`, [runId]);
+    _runOptimizationAsync(runId, orders, restrictions, components, penaltyRules, optimizer, startTime, signal)
+      .catch(async (e) => {
+        console.error('Optimization background error:', e);
+        await db.runStmt('UPDATE OPS_OPTIMIZATION_RUNS SET status=? WHERE id=?', ['Failed', runId]).catch(() => {});
+      })
+      .finally(() => activeRuns.delete(runId));
 
-    const capAnalysis = await db.queryAll(`
-      SELECT ca.*, r.name AS restriction_name, r.restriction_code
-      FROM   capacity_analysis ca
-      JOIN   restrictions r ON ca.restriction_id = r.id
-      WHERE  ca.run_id = ?
-      ORDER BY ca.is_critical DESC, ca.utilization_pct DESC`, [runId]);
-
-    const compAnalysis = await db.queryAll(`
-      SELECT ca.*, comp.name AS component_name, comp.component_code
-      FROM   component_analysis ca
-      JOIN   components comp ON ca.component_id = comp.id
-      WHERE  ca.run_id = ?
-      ORDER BY ca.is_critical DESC, ca.shortage DESC`, [runId]);
-
-    res.json({
-      run: runData, order_results: resultRows,
-      capacity_analysis: capAnalysis, component_analysis: compAnalysis,
-      summary: {
-        total_orders: orders.length, on_time_orders: onTimeCount,
-        delayed_orders: orders.length - onTimeCount,
-        on_time_percentage: onTimePct.toFixed(1),
-        total_penalty_cost: result.bestFitness.toFixed(2),
-        avg_delay_days: avgDelay.toFixed(1), max_delay_days: maxDelay,
-        execution_time_ms: execTime,
-        critical_restrictions: capAnalysis.filter(c => c.is_critical).length,
-        critical_components:   compAnalysis.filter(c => c.is_critical).length
-      }
-    });
   } catch (e) {
     console.error('Optimization error:', e);
-    await db.runStmt('UPDATE OPS_OPTIMIZATION_RUNS SET status=? WHERE id=?', ['Failed', runId]);
-    res.status(500).json({ error: e.message });
+    await db.runStmt('UPDATE OPS_OPTIMIZATION_RUNS SET status=? WHERE id=?', ['Failed', runId]).catch(() => {});
+    if (!res.headersSent) res.status(500).json({ error: e.message });
   }
+});
+
+async function _runOptimizationAsync(runId, orders, restrictions, components, penaltyRules, optimizer, startTime, signal) {
+  const genLogBuffer = [];
+  const onGenerationComplete = async (generation, bestFitness, avgFitness) => {
+    genLogBuffer.push({
+      id: uuidv4(), run_id: runId, generation,
+      best_fitness: bestFitness, avg_fitness: avgFitness,
+      logged_at: new Date().toISOString()
+    });
+    if (genLogBuffer.length >= 10) {
+      await db.bulkInsert('optimization_gen_log', [...genLogBuffer]);
+      genLogBuffer.length = 0;
+    }
+  };
+
+  const result = await optimizer.optimize(orders, restrictions, components, penaltyRules, signal, onGenerationComplete);
+
+  // Flush any remaining buffered generations
+  if (genLogBuffer.length > 0) await db.bulkInsert('optimization_gen_log', [...genLogBuffer]);
+
+  let onTimeCount = 0, totalDelay = 0, maxDelay = 0;
+  const infeasibleSet = new Set(result.details.infeasibleOrderIds || []);
+
+  // Build all result rows in memory then bulk-insert — avoids N serial round-trips to HANA
+  const resultRows = [];
+  for (const order of orders) {
+    const optimizedDate = result.bestSolution[order.id];
+    const originalDate  = order.promise_date;
+    const delayDays     = moment(optimizedDate).diff(moment(originalDate), 'days');
+    const penaltyCost   = result.details.orderPenalties?.[order.id] || 0;
+    const isInfeasible  = infeasibleSet.has(order.id);
+
+    if (!isInfeasible && delayDays <= 0) onTimeCount++;
+    else if (!isInfeasible) { totalDelay += delayDays; maxDelay = Math.max(maxDelay, delayDays); }
+
+    resultRows.push({
+      id: uuidv4(), run_id: runId, sales_order_id: order.id,
+      original_date: originalDate, optimized_date: optimizedDate,
+      delay_days: delayDays, penalty_cost: penaltyCost,
+      feasible: (!isInfeasible && delayDays <= 0) ? 1 : 0,
+      status: isInfeasible ? 'Infeasible' : (delayDays <= 0 ? 'On Time' : `Delayed ${delayDays}d`)
+    });
+  }
+  if (resultRows.length) await db.bulkInsert('optimization_results', resultRows);
+
+  const capRows = [];
+  for (const [restId, weeklyUsage] of Object.entries(result.details.weeklyCapacityUsage || {})) {
+    const restriction = restrictions.find(r => r.id === restId);
+    for (const [weekKey, usage] of Object.entries(weeklyUsage)) {
+      const [yr, wk]  = weekKey.split('-').map(Number);
+      const capEntry  = restriction?.weekly_capacities?.find(c => c.year === yr && c.week === wk);
+      const capacity  = capEntry?.capacity || 0;
+      const overCap   = Math.max(0, usage - capacity);
+      capRows.push({
+        id: uuidv4(), run_id: runId, restriction_id: restId,
+        year: yr, week: wk, capacity, required_capacity: usage,
+        utilization_pct: capacity > 0 ? (usage / capacity) * 100 : 100,
+        over_capacity: overCap,
+        violation_cost: overCap * (restriction?.penalty_cost_per_unit || 100),
+        is_critical: overCap > 0 ? 1 : 0
+      });
+    }
+  }
+  if (capRows.length) await db.bulkInsert('capacity_analysis', capRows);
+
+  const compRows = [];
+  for (const [compId, weeklyUsage] of Object.entries(result.details.weeklyComponentUsage || {})) {
+    const component = components.find(c => c.id === compId);
+    for (const [weekKey, required] of Object.entries(weeklyUsage)) {
+      const [yr, wk]   = weekKey.split('-').map(Number);
+      const availEntry = component?.availability?.find(a => a.year === yr && a.week === wk);
+      const available  = availEntry?.available_qty || 0;
+      const shortage   = Math.max(0, required - available);
+      compRows.push({
+        id: uuidv4(), run_id: runId, component_id: compId,
+        year: yr, week: wk, available, required,
+        shortage, shortage_cost: shortage * (component?.unit_cost || 10) * 3,
+        is_critical: shortage > 0 ? 1 : 0
+      });
+    }
+  }
+  if (compRows.length) await db.bulkInsert('component_analysis', compRows);
+
+  const avgDelay  = orders.length > 0 ? totalDelay / orders.length : 0;
+  const onTimePct = orders.length > 0 ? (onTimeCount / orders.length) * 100 : 0;
+  const execTime  = Date.now() - startTime;
+
+  await db.update('optimization_runs', runId, {
+    status: result.aborted ? 'Aborted' : 'Completed',
+    on_time_orders: onTimeCount,
+    delayed_orders: orders.length - onTimeCount,
+    total_penalty_cost: result.bestFitness, on_time_percentage: onTimePct,
+    avg_delay_days: avgDelay, max_delay_days: maxDelay, execution_time_ms: execTime
+  });
+}
+
+// ─── STOP OPTIMIZATION ────────────────────────────────────────────────────────
+router.post('/optimize/:id/stop', async (req, res) => {
+  const signal = activeRuns.get(req.params.id);
+  if (!signal) return res.status(404).json({ error: 'No active optimization with that ID' });
+  signal.aborted = true;
+  res.json({ success: true });
+});
+
+// ─── GEN LOG ──────────────────────────────────────────────────────────────────
+router.get('/optimization-runs/:id/gen-log', async (req, res) => {
+  try {
+    const rows = await db.queryAll(
+      `SELECT generation, best_fitness, avg_fitness, logged_at
+       FROM OPS_OPTIMIZATION_GEN_LOG WHERE run_id = ?
+       ORDER BY generation ASC`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── OPTIMIZATION RUNS ────────────────────────────────────────────────────────
@@ -1115,6 +1161,8 @@ router.get('/optimization-runs/:id', async (req, res) => {
 router.get('/dashboard', async (req, res) => {
   try {
     const today = moment().format('YYYY-MM-DD');
+    const { locationId } = req.query;
+
     const [
       totalProducts, totalCustomers, totalRestrictions, totalComponents,
       totalOrders, openOrders, confirmedOrders, overdueRow, lastRun,
@@ -1122,32 +1170,34 @@ router.get('/dashboard', async (req, res) => {
     ] = await Promise.all([
       db.count('products'),
       db.count('customers'),
-      db.count('restrictions'),
-      db.count('components'),
-      db.count('sales_orders'),
-      db.count('sales_orders', { STATUS: 'Open' }),
-      db.count('sales_orders', { STATUS: 'Confirmed' }),
+      db.count('restrictions', locationId ? { location_id: locationId } : {}),
+      db.count('components',   locationId ? { location_id: locationId } : {}),
+      db.count('sales_orders', locationId ? { location_id: locationId } : {}),
+      db.count('sales_orders', locationId ? { location_id: locationId, status: 'Open' }      : { STATUS: 'Open' }),
+      db.count('sales_orders', locationId ? { location_id: locationId, status: 'Confirmed' } : { STATUS: 'Confirmed' }),
       db.queryOne(
         `SELECT COUNT(*) AS cnt FROM OPS_SALES_ORDERS
-         WHERE promise_date < ? AND status IN ('Open','Confirmed')`, [today]),
+         WHERE promise_date < ? AND status IN ('Open','Confirmed')${locationId ? ` AND location_id = ?` : ''}`,
+        locationId ? [today, locationId] : [today]),
       db.queryOne(
-        // `SELECT * FROM OPS_OPTIMIZATION_RUNS ORDER BY created_at DESC FETCH FIRST 1 ROWS ONLY`
-      `SELECT * FROM OPS_OPTIMIZATION_RUNS ORDER BY created_at DESC LIMIT 1`
-      ),
+        `SELECT * FROM OPS_OPTIMIZATION_RUNS${locationId ? ` WHERE location_id = ?` : ''} ORDER BY created_at DESC LIMIT 1`,
+        locationId ? [locationId] : []),
       db.queryAll(`
         SELECT r.name, r.restriction_code,
                AVG(wc.capacity) AS avg_capacity, COUNT(wc.id) AS week_count
         FROM   restrictions r
         LEFT JOIN weekly_capacities wc ON r.id = wc.restriction_id
-        WHERE  r.is_active = true
-        GROUP BY r.id, r.name, r.restriction_code`),
+        WHERE  r.is_active = true${locationId ? ` AND r.location_id = ?` : ''}
+        GROUP BY r.id, r.name, r.restriction_code`,
+        locationId ? [locationId] : []),
       db.queryAll(`
         SELECT comp.name, comp.component_code, comp.min_stock,
                COALESCE(SUM(ca.available_qty), 0) AS total_available
         FROM   components comp
         LEFT JOIN component_availability ca ON comp.id = ca.component_id
-        WHERE  comp.is_active = true
-        GROUP BY comp.id, comp.name, comp.component_code, comp.min_stock`)
+        WHERE  comp.is_active = true${locationId ? ` AND comp.location_id = ?` : ''}
+        GROUP BY comp.id, comp.name, comp.component_code, comp.min_stock`,
+        locationId ? [locationId] : [])
     ]);
 
     res.json({
@@ -1167,15 +1217,30 @@ router.get('/dashboard', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ─── LOCATIONS ────────────────────────────────────────────────────────────────
+router.get('/locations', async (_req, res) => {
+  try {
+    const cf = await cds.connect.to('db');
+    const rows = await cf.run(SELECT.from('CP_LOCATION'));
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── SEED / CLEAR ─────────────────────────────────────────────────────────────
 router.post('/seed', async (req, res) => {
-  try { res.json({ success: true, ...(await seedData()) }); }
+  const { locationId } = req.body || {};
+  if (!locationId) return res.status(400).json({ error: 'locationId is required' });
+  try { res.json({ success: true, ...(await seedData(locationId)) }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.delete('/clear-data', async (req, res) => {
-  try { await db.clearAllData(); res.json({ success: true, message: 'All data cleared' }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  const locationId = req.query.locationId || (req.body && req.body.locationId);
+  if (!locationId) return res.status(400).json({ error: 'locationId is required' });
+  try {
+    await db.clearAllData(locationId);
+    res.json({ success: true, message: `Data cleared for location: ${locationId}` });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 module.exports = router;

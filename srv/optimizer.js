@@ -28,17 +28,18 @@ function addWeeks(dateStr, n) {
 class OrderPlanningOptimizer {
   constructor(config = {}) {
     this.populationSize = config.populationSize || 50;
-    this.generations = config.generations || 100;
+    this.timeLimitMs = config.timeLimitHrs ? config.timeLimitHrs * 60 * 60 * 1000 : null;
+    this.generations = this.timeLimitMs ? null : (config.generations || 100);
     this.mutationRate = config.mutationRate || 0.1;
     this.crossoverRate = config.crossoverRate || 0.8;
     this.elitismRate = config.elitismRate || 0.1;
-    this.maxWeeksDelay = config.maxWeeksDelay || 8; // max weeks we can push an order out
+    this.maxWeeksDelay = config.maxWeeksDelay || 8;
   }
 
   /**
    * Main optimization entry point
    */
-  async optimize(orders, restrictions, components, penaltyRules) {
+  async optimize(orders, restrictions, components, penaltyRules, signal = null, onGenerationComplete = null) {
     const startTime = Date.now();
 
     if (!orders || orders.length === 0) {
@@ -56,30 +57,50 @@ class OrderPlanningOptimizer {
     let bestSolution = null;
     let bestFitness = Infinity;
     let bestDetails = null;
+    let generationsRun = 0;
 
-    for (let gen = 0; gen < this.generations; gen++) {
-      // Evaluate fitness for each chromosome
-      const evaluated = population.map(chromosome => {
+    const useTimeBased = this.timeLimitMs != null;
+    const shouldContinue = () => {
+      if (signal && signal.aborted) return false;
+      return useTimeBased
+        ? Date.now() - startTime < this.timeLimitMs
+        : generationsRun < this.generations;
+    };
+
+    while (shouldContinue()) {
+      await new Promise(r => setImmediate(r)); // yield between generations
+      if (!shouldContinue()) break;
+
+      // Evaluate fitness in chunks, yielding every 10 chromosomes so the event loop
+      // can process stop signals and poll requests mid-generation
+      const evaluated = [];
+      for (let i = 0; i < population.length; i++) {
+        await new Promise(r => setImmediate(r));
+        if (!shouldContinue()) break;
         const { fitness, details } = this._evaluateFitness(
-          chromosome, orders, restrictions, components, penaltyRules
+          population[i], orders, restrictions, components, penaltyRules
         );
-        return { chromosome, fitness, details };
-      });
+        evaluated.push({ chromosome: population[i], fitness, details });
+      }
+      if (evaluated.length === 0) break;
 
-      // Sort by fitness ascending (lower = better)
       evaluated.sort((a, b) => a.fitness - b.fitness);
 
-      // Track best
       if (evaluated[0].fitness < bestFitness) {
         bestFitness = evaluated[0].fitness;
         bestSolution = { ...evaluated[0].chromosome };
         bestDetails = evaluated[0].details;
       }
 
-      // Early exit if perfect solution (zero penalty)
+      generationsRun++;
+
+      if (onGenerationComplete) {
+        const avgFitness = evaluated.reduce((s, e) => s + e.fitness, 0) / evaluated.length;
+        await onGenerationComplete(generationsRun, bestFitness, avgFitness);
+      }
+
       if (bestFitness === 0) break;
 
-      // Build next generation
       const eliteCount = Math.max(1, Math.floor(this.populationSize * this.elitismRate));
       const nextGen = evaluated.slice(0, eliteCount).map(e => ({ ...e.chromosome }));
 
@@ -105,6 +126,8 @@ class OrderPlanningOptimizer {
       bestSolution: {},
       bestFitness,
       executionTime,
+      generationsRun,
+      aborted: !!(signal && signal.aborted),
       details: bestDetails || {}
     };
 

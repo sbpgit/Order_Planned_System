@@ -29,6 +29,7 @@ entity Customers {
 
 entity Restrictions {
   key id                : String(36);
+  location_id           : String(50);
   restriction_code      : String(50);
   name                  : String(200);
   description           : String(1000);
@@ -61,6 +62,7 @@ entity PENALTY_RULES {
 
 entity Components {
   key id            : String(36);
+  location_id       : String(50);
   component_code    : String(50);
   name              : String(200);
   description       : String(1000);
@@ -83,7 +85,9 @@ entity Component_Availability {
 }
 entity Sales_Orders {
   key id            : String(36);
+  location_id       : String(50);
   order_number      : String(50);
+  unique_id         : Integer;
   customer          : Association to Customers;
   product           : Association to Products;
   requested_date    : Date;
@@ -115,6 +119,7 @@ entity Order_Components {
 
 entity Optimization_Runs {
   key id               : String(36);
+  location_id          : String(50);
   run_number           : String(50);
   description          : String(500);
   run_date             : Timestamp;
@@ -169,4 +174,13 @@ entity Component_Analysis {
   shortage         : Decimal(15,2);
   shortage_cost    : Decimal(15,2);
   is_critical      : Boolean;
+}
+
+entity Optimization_Gen_Log {
+  key id          : String(36);
+  run             : Association to Optimization_Runs;
+  generation      : Integer;
+  best_fitness    : Decimal(25,4);
+  avg_fitness     : Decimal(25,4);
+  logged_at       : Timestamp;
 }
