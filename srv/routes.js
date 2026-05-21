@@ -922,7 +922,7 @@ router.post('/optimize', async (req, res) => {
   } = req.body;
 
   const runId     = uuidv4();
-  const runNumber = `RUN-${moment().format('YYYYMMDD-HHmmss')}`;
+  const runNumber = `RUN-${moment().utcOffset('+05:30').format('YYYYMMDD-HHmmss')}`;
 
   try {
     await db.insert('optimization_runs', {
@@ -1024,7 +1024,6 @@ async function _runOptimizationAsync(runId, orders, restrictions, components, pe
   let onTimeCount = 0, totalDelay = 0, maxDelay = 0;
   const infeasibleSet = new Set(result.details.infeasibleOrderIds || []);
 
-  // Build all result rows in memory then bulk-insert — avoids N serial round-trips to HANA
   const resultRows = [];
   for (const order of orders) {
     const optimizedDate = result.bestSolution[order.id];
@@ -1120,8 +1119,11 @@ router.get('/optimization-runs/:id/gen-log', async (req, res) => {
 
 // ─── OPTIMIZATION RUNS ────────────────────────────────────────────────────────
 router.get('/optimization-runs', async (req, res) => {
-  try { res.json(await db.findAll('optimization_runs', {}, 'created_at DESC')); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    const { locationId } = req.query;
+    const where = locationId ? { location_id: locationId } : {};
+    res.json(await db.findAll('optimization_runs', where, 'run_date DESC'));
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.get('/optimization-runs/:id', async (req, res) => {
@@ -1160,7 +1162,7 @@ router.get('/optimization-runs/:id', async (req, res) => {
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 router.get('/dashboard', async (req, res) => {
   try {
-    const today = moment().format('YYYY-MM-DD');
+    const today = moment().utcOffset('+05:30').format('YYYY-MM-DD');
     const { locationId } = req.query;
 
     const [
@@ -1180,7 +1182,7 @@ router.get('/dashboard', async (req, res) => {
          WHERE promise_date < ? AND status IN ('Open','Confirmed')${locationId ? ` AND location_id = ?` : ''}`,
         locationId ? [today, locationId] : [today]),
       db.queryOne(
-        `SELECT * FROM OPS_OPTIMIZATION_RUNS${locationId ? ` WHERE location_id = ?` : ''} ORDER BY created_at DESC LIMIT 1`,
+        `SELECT * FROM OPS_OPTIMIZATION_RUNS${locationId ? ` WHERE location_id = ?` : ''} ORDER BY run_date DESC LIMIT 1`,
         locationId ? [locationId] : []),
       db.queryAll(`
         SELECT r.name, r.restriction_code,

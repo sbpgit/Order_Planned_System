@@ -89,7 +89,7 @@ async function seedData(locationId) {
         resource_type: r.RTR_DESC,
         valid_from: r.VALID_FROM,
         valid_to: r.VALID_TO,
-        penalty_cost_per_unit: Number(r.penalty_cost_per_unit || 200).toFixed(2),
+        penalty_cost_per_unit: Math.floor(Math.random() * 9951) + 50,
       });
     }
   }
@@ -170,7 +170,7 @@ async function seedData(locationId) {
     comp.name = componentGroups[i].ASM_DESC;
     comp.description = componentGroups[i].ASM_DESC;
     comp.supplier = "SBP" + i + '000';
-    comp.unit_cost = i * 50;
+    comp.unit_cost = Math.floor(Math.random() * 9951) + 50;
     comp.lead_time_days = i;
     comp.min_stock = i;
     components.push(comp);
