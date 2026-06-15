@@ -4,28 +4,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Order Planning System — Forklift Manufacturing</title>
+<title>Order Planning System — Supply Chain &amp; Production</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0d0f14;
-    --bg2: #13161d;
-    --bg3: #1a1e28;
-    --bg4: #22273a;
-    --border: #2a3048;
-    --text: #e2e8f0;
-    --text2: #94a3b8;
-    --text3: #64748b;
-    --accent: #3b82f6;
-    --accent2: #60a5fa;
-    --green: #22c55e;
-    --red: #ef4444;
-    --yellow: #f59e0b;
-    --orange: #f97316;
-    --purple: #a855f7;
-    --cyan: #06b6d4;
+    --bg: #f4f6f9;
+    --bg2: #ffffff;
+    --bg3: #f1f5f9;
+    --bg4: #e8edf3;
+    --border: #e3e8ef;
+    --text: #1e293b;
+    --text2: #475569;
+    --text3: #94a3b8;
+    --accent: #2563eb;
+    --accent2: #2563eb;
+    --green: #16a34a;
+    --red: #dc2626;
+    --yellow: #d97706;
+    --orange: #ea580c;
+    --purple: #9333ea;
+    --cyan: #0891b2;
+    --shadow: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
     --font: 'IBM Plex Sans', sans-serif;
     --mono: 'IBM Plex Mono', monospace;
   }
@@ -50,15 +51,15 @@
   }
 
   .sidebar-logo {
-    padding: 20px 20px 16px;
-    border-bottom: 1px solid var(--border);
+    padding: 20px 20px 18px;
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
   }
-  .sidebar-logo .logo-icon { font-size: 28px; margin-bottom: 4px; }
+  .sidebar-logo .logo-icon { display: none; }
   .sidebar-logo .logo-title {
-    font-size: 13px; font-weight: 700; letter-spacing: 0.08em;
-    text-transform: uppercase; color: var(--accent2);
+    font-size: 16px; font-weight: 700; letter-spacing: 0.01em;
+    color: #ffffff;
   }
-  .sidebar-logo .logo-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .sidebar-logo .logo-sub { font-size: 12px; color: rgba(255,255,255,0.78); margin-top: 3px; }
 
   .sidebar-nav { flex: 1; padding: 12px 0; overflow-y: auto; }
   .nav-group-label {
@@ -74,7 +75,8 @@
   }
   .nav-item:hover { background: var(--bg3); color: var(--text); }
   .nav-item.active { background: rgba(59,130,246,0.12); color: var(--accent2); border-left-color: var(--accent); }
-  .nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+  .nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; display: inline-flex; align-items: center; justify-content: center; }
+  .nav-item .nav-icon svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
   .sidebar-footer { padding: 16px; border-top: 1px solid var(--border); }
   .sidebar-footer .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-right: 6px; }
@@ -99,7 +101,7 @@
     cursor: pointer; border: none; transition: all 0.15s; font-family: var(--font);
   }
   .btn-primary { background: var(--accent); color: white; }
-  .btn-primary:hover { background: #2563eb; }
+  .btn-primary:hover { background: #1d4ed8; }
   .btn-secondary { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
   .btn-secondary:hover { background: var(--bg4); color: var(--text); }
   .btn-danger { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
@@ -112,7 +114,7 @@
   /* ---- Cards ---- */
   .card {
     background: var(--bg2); border: 1px solid var(--border);
-    border-radius: 10px; overflow: hidden;
+    border-radius: 10px; overflow: hidden; box-shadow: var(--shadow);
   }
   .card-header {
     padding: 16px 20px; border-bottom: 1px solid var(--border);
@@ -126,9 +128,10 @@
   .kpi-card {
     background: var(--bg2); border: 1px solid var(--border);
     border-radius: 10px; padding: 20px; position: relative; overflow: hidden;
+    box-shadow: var(--shadow);
   }
   .kpi-card::before {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
   }
   .kpi-card.blue::before { background: var(--accent); }
   .kpi-card.green::before { background: var(--green); }
@@ -151,8 +154,8 @@
     color: var(--text3); border-bottom: 1px solid var(--border);
     white-space: nowrap;
   }
-  tbody tr { border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.1s; }
-  tbody tr:hover { background: rgba(255,255,255,0.03); }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  tbody tr:hover { background: var(--bg3); }
   tbody td { padding: 11px 14px; color: var(--text2); vertical-align: middle; }
   tbody td.primary { color: var(--text); font-weight: 500; }
   .mono { font-family: var(--mono); font-size: 12px; }
@@ -162,16 +165,16 @@
     display: inline-flex; align-items: center; padding: 2px 8px;
     border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
   }
-  .badge-high { background: rgba(239,68,68,0.15); color: #fca5a5; }
-  .badge-medium { background: rgba(245,158,11,0.15); color: #fcd34d; }
-  .badge-low { background: rgba(100,116,139,0.15); color: #94a3b8; }
-  .badge-open { background: rgba(59,130,246,0.15); color: var(--accent2); }
-  .badge-confirmed { background: rgba(34,197,94,0.15); color: #86efac; }
-  .badge-critical { background: rgba(239,68,68,0.2); color: #fca5a5; }
-  .badge-warning { background: rgba(245,158,11,0.2); color: #fcd34d; }
-  .badge-ok { background: rgba(34,197,94,0.15); color: #86efac; }
-  .badge-ontime { background: rgba(34,197,94,0.15); color: #86efac; }
-  .badge-delayed { background: rgba(245,158,11,0.15); color: #fcd34d; }
+  .badge-high { background: rgba(220,38,38,0.1); color: #b91c1c; }
+  .badge-medium { background: rgba(217,119,6,0.12); color: #b45309; }
+  .badge-low { background: rgba(100,116,139,0.12); color: #475569; }
+  .badge-open { background: rgba(37,99,235,0.1); color: #1d4ed8; }
+  .badge-confirmed { background: rgba(22,163,74,0.12); color: #15803d; }
+  .badge-critical { background: rgba(220,38,38,0.12); color: #b91c1c; }
+  .badge-warning { background: rgba(217,119,6,0.14); color: #b45309; }
+  .badge-ok { background: rgba(22,163,74,0.12); color: #15803d; }
+  .badge-ontime { background: rgba(22,163,74,0.12); color: #15803d; }
+  .badge-delayed { background: rgba(217,119,6,0.12); color: #b45309; }
 
   /* ---- Forms ---- */
   .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -191,7 +194,7 @@
 
   /* ---- Modals ---- */
   .modal-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 1000;
+    position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 1000;
     display: flex; align-items: center; justify-content: center; padding: 20px;
     opacity: 0; pointer-events: none; transition: opacity 0.2s;
   }
@@ -398,7 +401,7 @@
 /* ---- Violation detail panel ---- */
   .violation-item {
     display: flex; align-items: flex-start; gap: 12px; padding: 12px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--border);
   }
   .violation-item:last-child { border-bottom: none; }
   .vi-icon { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
@@ -414,7 +417,7 @@
   .download-strip .ds-title { font-size: 13px; font-weight: 600; }
   .download-strip .ds-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
   .download-btns { display: flex; gap: 8px; flex-wrap: wrap; }
-  .btn-excel { background: rgba(34,197,94,0.12); color: #86efac; border: 1px solid rgba(34,197,94,0.25); }
+  .btn-excel { background: rgba(22,163,74,0.1); color: #15803d; border: 1px solid rgba(22,163,74,0.25); }
   .btn-excel:hover { background: rgba(34,197,94,0.2); }
 
 </style>
@@ -427,45 +430,44 @@
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-logo">
-      <div class="logo-icon">🏗️</div>
-      <div class="logo-title">Order Planning</div>
-      <div class="logo-sub">Forklift Manufacturing</div>
+      <div class="logo-title">Order Planning System</div>
+      <div class="logo-sub">Supply Chain &amp; Production</div>
     </div>
     <nav class="sidebar-nav">
       <div class="nav-group-label">Overview</div>
       <div class="nav-item active" onclick="navigate('dashboard')">
-        <span class="nav-icon">📊</span> Dashboard
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span> Dashboard
       </div>
       <div class="nav-group-label">Master Data</div>
       <div class="nav-item" onclick="navigate('products')">
-        <span class="nav-icon">🏭</span> Products
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span> Products
       </div>
       <div class="nav-item" onclick="navigate('customers')">
-        <span class="nav-icon">👥</span> Customers
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span> Customers
       </div>
       <div class="nav-item" onclick="navigate('restrictions')">
-        <span class="nav-icon">⚙️</span> Restrictions
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg></span> Restrictions
       </div>
       <div class="nav-item" onclick="navigate('components')">
-        <span class="nav-icon">🔩</span> Components
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg></span> Components
       </div>
       <div class="nav-item" onclick="navigate('penalties')">
-        <span class="nav-icon">💰</span> Penalty Rules
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span> Penalty Rules
       </div>
       <div class="nav-group-label">Orders</div>
       <div class="nav-item" onclick="navigate('orders')">
-        <span class="nav-icon">📋</span> Sales Orders
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span> Sales Orders
       </div>
       <div class="nav-group-label">Planning</div>
       <div class="nav-item" onclick="navigate('optimize')">
-        <span class="nav-icon">🧬</span> Run Optimization
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg></span> Run Optimization
       </div>
       <div class="nav-item" onclick="navigate('results')">
-        <span class="nav-icon">📈</span> Results History
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></span> Results History
       </div>
       <div class="nav-group-label">Data Tools</div>
       <div class="nav-item" onclick="navigate('importexport')">
-        <span class="nav-icon">📥</span> Import / Export
+        <span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></span> Import / Export
       </div>
     </nav>
     <div class="sidebar-footer">
@@ -517,7 +519,7 @@
       <!-- ===== PRODUCTS ===== -->
       <div id="page-products" class="page">
         <div class="section-header">
-          <div><div class="section-title">Products</div><div class="section-sub">Forklift product catalog</div></div>
+          <div><div class="section-title">Products</div><div class="section-sub">Product catalog</div></div>
           <button class="btn btn-primary" onclick="openModal('modal-product')">+ Add Product</button>
         </div>
         <div class="card">
@@ -767,6 +769,21 @@
                   <label>Crossover Rate</label>
                   <input type="number" id="opt-cross" value="0.8" step="0.01" min="0" max="1">
                 </div>
+                <div class="form-group">
+                  <label>&nbsp;</label>
+                  <label style="display:flex;align-items:center;gap:8px;font-weight:400;font-size:13px;color:var(--text2);cursor:pointer;height:38px">
+                    <input type="checkbox" id="opt-early" onchange="toggleEarlyWeeks()" style="width:auto;cursor:pointer">
+                    Enable Early Scheduling
+                  </label>
+                </div>
+                <div class="form-group" id="opt-early-weeks-group" style="display:none">
+                  <label>Pull-Forward Weeks</label>
+                  <select id="opt-early-weeks">
+                    <option value="1">1 week</option>
+                    <option value="2" selected>2 weeks</option>
+                    <option value="3">3 weeks</option>
+                  </select>
+                </div>
               </div>
               <div class="divider"></div>
               <div style="background:var(--bg3);padding:12px;border-radius:8px;border:1px solid var(--border);margin-bottom:16px">
@@ -833,7 +850,7 @@
             <p class="text-sm text-muted mb-2">Download a template with sample rows and exact column headers for each entity. Fill in your data and upload below.</p>
             <div class="template-grid">
               <div class="template-card" onclick="IE.downloadTemplate('products')">
-                <div class="tc-icon">📦</div><div class="tc-name">Products</div><div class="tc-desc">Forklift catalogue</div>
+                <div class="tc-icon">📦</div><div class="tc-name">Products</div><div class="tc-desc">Product catalogue</div>
               </div>
               <div class="template-card" onclick="IE.downloadTemplate('customers')">
                 <div class="tc-icon">👥</div><div class="tc-name">Customers</div><div class="tc-desc">Customer master</div>
@@ -978,9 +995,9 @@
       <input type="hidden" id="prod-id">
       <div class="form-grid">
         <div class="form-group"><label>Product Code *</label><input id="prod-code" placeholder="FL-E2T"></div>
-        <div class="form-group"><label>Name *</label><input id="prod-name" placeholder="Electric Forklift 2T"></div>
+        <div class="form-group"><label>Name *</label><input id="prod-name" placeholder="Product name"></div>
         <div class="form-group full"><label>Description</label><textarea id="prod-desc"></textarea></div>
-        <div class="form-group"><label>Category</label><input id="prod-cat" placeholder="Electric Forklifts"></div>
+        <div class="form-group"><label>Category</label><input id="prod-cat" placeholder="Category"></div>
         <div class="form-group"><label>Unit Price ($)</label><input id="prod-price" type="number" step="100"></div>
         <div class="form-group"><label>Standard Cost ($)</label><input id="prod-cost" type="number" step="100"></div>
         <div class="form-group"><label>Lead Time (days)</label><input id="prod-lead" type="number" min="0"></div>
@@ -1577,7 +1594,7 @@ Pages.results = async () => {
 };
 
 Pages.seed = async () => {
-  if (!confirm('This will clear ALL existing data and load sample forklift manufacturing data. Continue?')) return;
+  if (!confirm('This will clear ALL existing data and load sample data. Continue?')) return;
   try {
     const r = await api('POST', '/seed');
     // Clear previous optimization results from the UI
@@ -1596,21 +1613,12 @@ Pages.seed = async () => {
 };
 
 Pages.clearData = async () => {
-  if (!confirm('This will permanently delete ALL data from the system. This action cannot be undone. Continue?')) return;
+  if (!confirm('This will permanently delete ALL master & transaction data. Optimization results and runs are preserved. Continue?')) return;
   try {
     const r = await api('DELETE', '/clear-data');
     // Clear previous import/upload progress from the UI
     const importProgress = document.getElementById('ie-progress');
     if (importProgress) { importProgress.style.display = 'none'; importProgress.innerHTML = ''; }
-    // Clear previous optimization results from the UI
-    const resultsSection = document.getElementById('opt-results-section');
-    if (resultsSection) { resultsSection.style.display = 'none'; }
-    const resultsContent = document.getElementById('opt-results-content');
-    if (resultsContent) { resultsContent.innerHTML = ''; }
-    const optProgress = document.getElementById('opt-progress');
-    if (optProgress) {
-      optProgress.innerHTML = '<div class="empty-state"><div class="empty-icon">🧬</div><div>Configure parameters and click<br><strong>Run Optimization</strong> to start</div></div>';
-    }
     toast('All data has been cleared successfully', 'success');
     navigate('dashboard');
   } catch(e) { toast(e.message,'error'); }
@@ -1879,6 +1887,11 @@ async function deleteOrder(id) {
 }
 
 // ===== Optimization =====
+// Show the pull-forward weeks selector only when early scheduling is enabled.
+function toggleEarlyWeeks() {
+  const on = document.getElementById('opt-early').checked;
+  document.getElementById('opt-early-weeks-group').style.display = on ? '' : 'none';
+}
 async function runOptimization() {
   const btn = document.getElementById('btn-run-opt');
   btn.disabled = true;
@@ -1893,12 +1906,15 @@ async function runOptimization() {
   document.getElementById('opt-results-section').style.display = 'none';
 
   try {
+    const earlyOn = document.getElementById('opt-early').checked;
     const result = await api('POST', '/optimize', {
       description: document.getElementById('opt-desc').value,
       population_size: parseInt(document.getElementById('opt-pop').value)||50,
       generations: parseInt(document.getElementById('opt-gen').value)||100,
       mutation_rate: parseFloat(document.getElementById('opt-mut').value)||0.1,
-      crossover_rate: parseFloat(document.getElementById('opt-cross').value)||0.8
+      crossover_rate: parseFloat(document.getElementById('opt-cross').value)||0.8,
+      early_scheduling: earlyOn,
+      early_weeks: earlyOn ? (parseInt(document.getElementById('opt-early-weeks').value)||1) : 0
     });
 
     const s = result.summary;
@@ -2111,7 +2127,9 @@ function renderOptimizationResults(result) {
     <thead><tr><th>Order #</th><th>Customer</th><th>Product</th><th>Priority</th><th>Original Date</th><th>Optimized Date</th><th>Delay</th><th>Penalty</th><th>Status</th></tr></thead>
     <tbody>${orders.map(o => {
       const d = o.delay_days > 0;
-      return `<tr><td class="mono primary">${o.order_number}</td><td class="text-sm">${o.customer_name||'—'}</td><td class="text-sm">${o.product_name||'—'}</td><td>${fmt.priorityBadge(o.priority)}</td><td>${fmt.date(o.original_date)}</td><td class="${d?'text-yellow':'text-green'}">${fmt.date(o.optimized_date)}</td><td class="${d?'text-yellow':'text-green'}">${d?'+'+o.delay_days+'d':'✓ On Time'}</td><td class="${o.penalty_cost>0?'text-red':'text-green'}">${fmt.currency(o.penalty_cost)}</td><td><span class="badge ${d?'badge-delayed':'badge-ontime'}">${o.status}</span></td></tr>`;
+      const early = o.delay_days < 0;
+      const delayCell = d ? '+'+o.delay_days+'d' : early ? o.delay_days+'d (Early)' : '✓ On Time';
+      return `<tr><td class="mono primary">${o.order_number}</td><td class="text-sm">${o.customer_name||'—'}</td><td class="text-sm">${o.product_name||'—'}</td><td>${fmt.priorityBadge(o.priority)}</td><td>${fmt.date(o.original_date)}</td><td class="${d?'text-yellow':'text-green'}">${fmt.date(o.optimized_date)}</td><td class="${d?'text-yellow':'text-green'}">${delayCell}</td><td class="${o.penalty_cost>0?'text-red':'text-green'}">${fmt.currency(o.penalty_cost)}</td><td><span class="badge ${d?'badge-delayed':'badge-ontime'}">${o.status}</span></td></tr>`;
     }).join('')}</tbody>
   </table></div></div></div></div>`;
 
@@ -2419,7 +2437,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Set default week values for restriction capacity
   const now = new Date();
-  const m = require ? null : null;
   document.getElementById('cap-year').value = now.getFullYear();
   // Rough ISO week
   const startOfYear = new Date(now.getFullYear(), 0, 1);
@@ -2732,8 +2749,8 @@ const IE = (() => {
       sheet: 'Products',
       cols: ['product_code','name','description','category','unit_price','standard_cost','lead_time_days','is_active'],
       sample: [
-        ['PROD001','Electric Forklift 2T','2-ton electric counterbalance forklift','Electric Forklifts',45000,32000,14,true],
-        ['PROD002','Diesel Forklift 3T','3-ton diesel counterbalance forklift','Diesel Forklifts',38000,28000,12,true]
+        ['PROD001','Product A','Standard product, variant A','Category 1',45000,32000,14,true],
+        ['PROD002','Product B','Standard product, variant B','Category 2',38000,28000,12,true]
       ]
     },
     customers: {
@@ -2757,7 +2774,7 @@ const IE = (() => {
       sheet: 'Restrictions',
       cols: ['restriction_code','name','description','resource_type','valid_from','valid_to','penalty_cost_per_unit','is_active'],
       sample: [
-        ['REST001','Assembly Line A','Main assembly line for electric forklifts','Assembly',validFrom,validTo,150,true],
+        ['REST001','Assembly Line A','Main assembly line','Assembly',validFrom,validTo,150,true],
         ['REST002','Paint Shop','Paint facility for all products','Finishing',validFrom,validTo,200,true]
       ]
     },

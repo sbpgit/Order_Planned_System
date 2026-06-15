@@ -902,8 +902,15 @@ router.post('/optimize', async (req, res) => {
     population_size = 50,
     generations     = 100,
     mutation_rate   = 0.1,
-    crossover_rate  = 0.8
+    crossover_rate  = 0.8,
+    early_scheduling = false, // opt-in: when true, greedily pull orders forward after the GA run
+    early_weeks      = 0,     // user-chosen pull-forward window (1, 2 or 3 weeks); only used when early_scheduling
+    max_weeks_delay  = 8      // how many weeks after the promise date an order may be pushed out
   } = req.body;
+
+  // Clamp the pull-forward window to the supported 1–3 week range (0 when early scheduling is off)
+  const earlyScheduling = early_scheduling === true;
+  const earlyWeeks = earlyScheduling ? Math.min(3, Math.max(1, parseInt(early_weeks, 10) || 1)) : 0;
 
   const runId     = uuidv4();
   const runNumber = `RUN-${moment().format('YYYYMMDD-HHmmss')}`;
@@ -912,7 +919,7 @@ router.post('/optimize', async (req, res) => {
     await db.insert('optimization_runs', {
       id: runId, run_number: runNumber, description,
       status: 'Running', run_date: new Date(),
-      parameters: JSON.stringify({ population_size, generations, mutation_rate, crossover_rate })
+      parameters: JSON.stringify({ population_size, generations, mutation_rate, crossover_rate, early_scheduling: earlyScheduling, early_weeks: earlyWeeks })
     });
 
     const orders       = await db.getOrdersWithDetails();
@@ -954,7 +961,8 @@ router.post('/optimize', async (req, res) => {
 
     const optimizer = new OrderPlanningOptimizer({
       populationSize: population_size, generations,
-      mutationRate: mutation_rate, crossoverRate: crossover_rate
+      mutationRate: mutation_rate, crossoverRate: crossover_rate,
+      earlyScheduling, earlyWeeks, maxWeeksDelay: max_weeks_delay
     });
     const result = await optimizer.optimize(orders, restrictions, components, penaltyRules);
     console.log(result);
@@ -964,19 +972,36 @@ router.post('/optimize', async (req, res) => {
     for (const order of orders) {
       const optimizedDate = result.bestSolution[order.id];
       const originalDate  = order.promise_date;
-      const delayDays     = moment(optimizedDate).diff(moment(originalDate), 'days');
+      // Planning is week-based: the optimized date is the Monday of the confirmed week, so a
+      // same-week placement can show a small day-diff. Treat the same ISO week as on time (0 delay).
+      const sameWeek = moment(optimizedDate).isoWeek() === moment(originalDate).isoWeek()
+                    && moment(optimizedDate).isoWeekYear() === moment(originalDate).isoWeekYear();
+      const delayDays     = sameWeek ? 0 : moment(optimizedDate).diff(moment(originalDate), 'days');
       const penaltyCost   = result.details.orderPenalties?.[order.id] || 0;
       const isInfeasible  = infeasibleSet.has(order.id);
 
       if (!isInfeasible && delayDays <= 0) onTimeCount++;
       else if (!isInfeasible) { totalDelay += delayDays; maxDelay = Math.max(maxDelay, delayDays); }
 
+      const statusLabel = isInfeasible
+        ? 'Infeasible'
+        : (delayDays < 0 ? `Early ${-delayDays}d`
+          : delayDays === 0 ? 'On Time'
+          : `Delayed ${delayDays}d`);
+
       await db.insert('optimization_results', {
         id: uuidv4(), run_id: runId, sales_order_id: order.id,
         original_date: originalDate, optimized_date: optimizedDate,
         delay_days: delayDays, penalty_cost: penaltyCost,
         feasible: isInfeasible ? 0 : (delayDays <= 28 ? 1 : 0),
-        status: isInfeasible ? 'Infeasible' : (delayDays <= 0 ? 'On Time' : `Delayed ${delayDays}d`)
+        status: statusLabel,
+        // Snapshot for wipe-safe history
+        order_number: order.order_number || null,
+        customer_name: order.customer_name || null,
+        product_name: order.product_name || null,
+        promise_date: order.promise_date || null,
+        quantity: order.quantity || null,
+        priority: order.priority || null
       });
     }
 
@@ -993,7 +1018,10 @@ router.post('/optimize', async (req, res) => {
           utilization_pct: capacity > 0 ? (usage / capacity) * 100 : 100,
           over_capacity: overCap,
           violation_cost: overCap * (restriction?.penalty_cost_per_unit || 100),
-          is_critical: overCap > 0 ? 1 : 0
+          is_critical: overCap > 0 ? 1 : 0,
+          // Snapshot for wipe-safe history
+          restriction_name: restriction?.name || null,
+          restriction_code: restriction?.restriction_code || null
         });
       }
     }
@@ -1009,7 +1037,10 @@ router.post('/optimize', async (req, res) => {
           id: uuidv4(), run_id: runId, component_id: compId,
           year: yr, week: wk, available, required,
           shortage, shortage_cost: shortage * (component?.unit_cost || 10) * 3,
-          is_critical: shortage > 0 ? 1 : 0
+          is_critical: shortage > 0 ? 1 : 0,
+          // Snapshot for wipe-safe history
+          component_name: component?.name || null,
+          component_code: component?.component_code || null
         });
       }
     }
@@ -1035,7 +1066,7 @@ router.post('/optimize', async (req, res) => {
       LEFT JOIN customers c  ON so.customer_id = c.id
       LEFT JOIN products  p  ON so.product_id  = p.id
       WHERE  or2.run_id = ?
-      ORDER BY or2.delay_days DESC`, [runId]);
+      ORDER BY or2.optimized_date ASC`, [runId]);
 
     const capAnalysis = await db.queryAll(`
       SELECT ca.*, r.name AS restriction_name, r.restriction_code
@@ -1074,7 +1105,7 @@ router.post('/optimize', async (req, res) => {
 
 // ─── OPTIMIZATION RUNS ────────────────────────────────────────────────────────
 router.get('/optimization-runs', async (req, res) => {
-  try { res.json(await db.findAll('optimization_runs', {}, 'created_at DESC')); }
+  try { res.json(await db.findAll('optimization_runs', {}, 'run_date DESC')); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1083,31 +1114,103 @@ router.get('/optimization-runs/:id', async (req, res) => {
     const run = await db.findOne('optimization_runs', { id: req.params.id });
     if (!run) return res.status(404).json({ error: 'Not found' });
 
+    // Use snapshot columns first; fall back to live master data joins for legacy rows
+    // (where snapshot columns are NULL). LEFT JOIN so wiped master data doesn't drop rows.
     run.order_results = await db.queryAll(`
-      SELECT or2.*, so.order_number, so.promise_date, so.quantity, so.priority,
+      SELECT or2.id, or2.run_id, or2.sales_order_id,
+             or2.original_date, or2.optimized_date, or2.delay_days,
+             or2.penalty_cost, or2.feasible, or2.status,
+             COALESCE(or2.order_number,  so.order_number)  AS order_number,
+             COALESCE(or2.customer_name, c.name)           AS customer_name,
+             COALESCE(or2.product_name,  p.name)           AS product_name,
+             COALESCE(or2.promise_date,  so.promise_date)  AS promise_date,
+             COALESCE(or2.quantity,      so.quantity)      AS quantity,
+             COALESCE(or2.priority,      so.priority)      AS priority
+      FROM   optimization_results or2
+      LEFT JOIN sales_orders so ON or2.sales_order_id = so.id
+      LEFT JOIN customers   c  ON so.customer_id = c.id
+      LEFT JOIN products    p  ON so.product_id  = p.id
+      WHERE  or2.run_id = ?
+      ORDER BY or2.optimized_date ASC`, [req.params.id]);
+
+    run.capacity_analysis = await db.queryAll(`
+      SELECT ca.id, ca.run_id, ca.restriction_id, ca.year, ca.week,
+             ca.capacity, ca.required_capacity, ca.utilization_pct,
+             ca.over_capacity, ca.violation_cost, ca.is_critical,
+             COALESCE(ca.restriction_name, r.name)             AS restriction_name,
+             COALESCE(ca.restriction_code, r.restriction_code) AS restriction_code
+      FROM   capacity_analysis ca
+      LEFT JOIN restrictions r ON ca.restriction_id = r.id
+      WHERE  ca.run_id = ?
+      ORDER BY ca.is_critical DESC, ca.utilization_pct DESC`, [req.params.id]);
+
+    run.component_analysis = await db.queryAll(`
+      SELECT ca.id, ca.run_id, ca.component_id, ca.year, ca.week,
+             ca.available, ca.required, ca.shortage, ca.shortage_cost, ca.is_critical,
+             COALESCE(ca.component_name, comp.name)           AS component_name,
+             COALESCE(ca.component_code, comp.component_code) AS component_code
+      FROM   component_analysis ca
+      LEFT JOIN components comp ON ca.component_id = comp.id
+      WHERE  ca.run_id = ?
+      ORDER BY ca.is_critical DESC, ca.shortage DESC`, [req.params.id]);
+
+    res.json(run);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── BACKFILL: copy current master data into the snapshot columns of existing
+// run rows, so historical runs survive future Clear Data. Run ONCE, before the
+// first Clear Data — depends on master data still being intact.
+router.post('/backfill-optimization-snapshots', async (req, res) => {
+  try {
+    const orderRows = await db.queryAll(`
+      SELECT or2.id, so.order_number, so.promise_date, so.quantity, so.priority,
              c.name AS customer_name, p.name AS product_name
       FROM   optimization_results or2
       JOIN   sales_orders so ON or2.sales_order_id = so.id
       LEFT JOIN customers c  ON so.customer_id = c.id
       LEFT JOIN products  p  ON so.product_id  = p.id
-      WHERE  or2.run_id = ?
-      ORDER BY or2.delay_days DESC`, [req.params.id]);
+      WHERE  or2.order_number IS NULL`);
 
-    run.capacity_analysis = await db.queryAll(`
-      SELECT ca.*, r.name AS restriction_name, r.restriction_code
+    for (const r of orderRows) {
+      await db.runStmt(
+        `UPDATE OPS_OPTIMIZATION_RESULTS
+         SET order_number=?, customer_name=?, product_name=?,
+             promise_date=?, quantity=?, priority=?
+         WHERE id=?`,
+        [r.order_number, r.customer_name, r.product_name,
+         r.promise_date, r.quantity, r.priority, r.id]);
+    }
+
+    const capRows = await db.queryAll(`
+      SELECT ca.id, r.name AS restriction_name, r.restriction_code
       FROM   capacity_analysis ca
       JOIN   restrictions r ON ca.restriction_id = r.id
-      WHERE  ca.run_id = ?
-      ORDER BY ca.is_critical DESC, ca.utilization_pct DESC`, [req.params.id]);
+      WHERE  ca.restriction_name IS NULL`);
 
-    run.component_analysis = await db.queryAll(`
-      SELECT ca.*, comp.name AS component_name, comp.component_code
+    for (const r of capRows) {
+      await db.runStmt(
+        `UPDATE OPS_CAPACITY_ANALYSIS SET restriction_name=?, restriction_code=? WHERE id=?`,
+        [r.restriction_name, r.restriction_code, r.id]);
+    }
+
+    const compRows = await db.queryAll(`
+      SELECT ca.id, comp.name AS component_name, comp.component_code
       FROM   component_analysis ca
       JOIN   components comp ON ca.component_id = comp.id
-      WHERE  ca.run_id = ?
-      ORDER BY ca.is_critical DESC, ca.shortage DESC`, [req.params.id]);
+      WHERE  ca.component_name IS NULL`);
 
-    res.json(run);
+    for (const r of compRows) {
+      await db.runStmt(
+        `UPDATE OPS_COMPONENT_ANALYSIS SET component_name=?, component_code=? WHERE id=?`,
+        [r.component_name, r.component_code, r.id]);
+    }
+
+    res.json({
+      results_backfilled: orderRows.length,
+      capacity_backfilled: capRows.length,
+      component_backfilled: compRows.length
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

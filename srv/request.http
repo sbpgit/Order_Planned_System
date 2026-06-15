@@ -1,5 +1,5 @@
 ### Get sample data
-POST   http://localhost:4004/api/seed
+POST   http://localhost:4004/api/backfill-optimization-snapshots
 Content-Type: application/json
 
 {

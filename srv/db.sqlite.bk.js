@@ -218,7 +218,8 @@ function getComponentsWithAvailability() {
 }
 
 function clearAllData() {
-  ['component_analysis','capacity_analysis','optimization_results','optimization_runs',
+  ['component_analysis','capacity_analysis',
+    // 'optimization_results','optimization_runs',
    'order_components','order_restrictions','sales_orders','component_availability',
    'weekly_capacities','penalty_rules','customers','components','restrictions','products'
   ].forEach(t => runStmt(`DELETE FROM ${t}`));

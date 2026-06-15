@@ -142,6 +142,13 @@ entity Optimization_Results {
   penalty_cost    : Decimal(15,2);
   feasible        : Boolean;
   status          : String(100);
+  // Snapshot columns — preserved even after master/transaction data is cleared
+  order_number    : String(50);
+  customer_name   : String(255);
+  product_name    : String(255);
+  promise_date    : Date;
+  quantity        : Decimal(15,2);
+  priority        : String(20);
 }
 
 entity Capacity_Analysis {
@@ -156,6 +163,9 @@ entity Capacity_Analysis {
   over_capacity       : Decimal(15,2);
   violation_cost      : Decimal(15,2);
   is_critical         : Boolean;
+  // Snapshot columns — preserved even after master data is cleared
+  restriction_name    : String(255);
+  restriction_code    : String(50);
 }
 
 entity Component_Analysis {
@@ -169,4 +179,7 @@ entity Component_Analysis {
   shortage         : Decimal(15,2);
   shortage_cost    : Decimal(15,2);
   is_critical      : Boolean;
+  // Snapshot columns — preserved even after master data is cleared
+  component_name   : String(255);
+  component_code   : String(50);
 }

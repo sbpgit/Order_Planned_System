@@ -781,10 +781,11 @@ async function getComponentsWithAvailability() {
 async function clearAllData() {
 
   const tables = [
-    'component_analysis',
-    'capacity_analysis',
-    'optimization_results',
-    'optimization_runs',
+    // Optimization output tables — preserved so historical runs remain viewable
+    // 'component_analysis',
+    // 'capacity_analysis',
+    // 'optimization_results',
+    // 'optimization_runs',
     'order_components',
     'order_restrictions',
     'sales_orders',

@@ -6,32 +6,55 @@ const db = require('./db');
 async function seedData() {
   
   await db.clearAllData();
-  console.log('Seeding sample data (Forklift manufacturer)...');
-  // const sf = await cds.connect.to('db');
+  console.log('Seeding sample data...');
+  const cf = await cds.connect.to('db');
   //   const abc = await sf.run(SELECT.from('CP_LOCATION'));
   //   console.log(abc);
 
   // ---- Customers ----
-  const customers = [
-    { id: uuidv4(), customer_code: 'CUST001', name: 'Atlas Manufacturing Ltd', priority: 'High', contact_person: 'James Thornton', email: 'j.thornton@atlas.com', phone: '+1-555-0101' },
-    { id: uuidv4(), customer_code: 'CUST002', name: 'Pinnacle Logistics Corp', priority: 'Medium', contact_person: 'Sarah Chen', email: 's.chen@pinnacle.com', phone: '+1-555-0102' },
-    { id: uuidv4(), customer_code: 'CUST003', name: 'Global Warehouse Solutions', priority: 'High', contact_person: 'Michael Okonkwo', email: 'm.okonkwo@gws.com', phone: '+1-555-0103' },
-    { id: uuidv4(), customer_code: 'CUST004', name: 'Regional Transport LLC', priority: 'Low', contact_person: 'Emma Vasquez', email: 'e.vasquez@rt.com', phone: '+1-555-0104' },
-    { id: uuidv4(), customer_code: 'CUST005', name: 'Express Freight Partners', priority: 'Medium', contact_person: 'David Kim', email: 'd.kim@efp.com', phone: '+1-555-0105' },
-    { id: uuidv4(), customer_code: 'CUST006', name: 'Harbour Port Authority', priority: 'High', contact_person: 'Linda Mbeki', email: 'l.mbeki@harbour.com', phone: '+1-555-0106' },
-  ];
+  const customerGroup = await cf.run(SELECT.from('CP_CUSTOMERGROUP'));
+  const customers=[];
+  for(i=0;i<customerGroup.length;i++){
+    customers.id=uuidv4();
+    customers.customer_code= customerGroup[i].CUSTOMER_GROUP;
+    customers.name= customerGroup[i].CUSTOMER_DESC;
+    customers.priority= 'High';
+    customers.contact_person= "James" + i +'23';
+    customers.email= 'abc@abc.com';
+    customers.phone= 'phone';
+  }
+  // const customers = [
+  //   { id: uuidv4(), customer_code: 'CUST001', name: 'Atlas Manufacturing Ltd', priority: 'High', contact_person: 'James Thornton', email: 'j.thornton@atlas.com', phone: '+1-555-0101' },
+  //   { id: uuidv4(), customer_code: 'CUST002', name: 'Pinnacle Logistics Corp', priority: 'Medium', contact_person: 'Sarah Chen', email: 's.chen@pinnacle.com', phone: '+1-555-0102' },
+  //   { id: uuidv4(), customer_code: 'CUST003', name: 'Global Warehouse Solutions', priority: 'High', contact_person: 'Michael Okonkwo', email: 'm.okonkwo@gws.com', phone: '+1-555-0103' },
+  //   { id: uuidv4(), customer_code: 'CUST004', name: 'Regional Transport LLC', priority: 'Low', contact_person: 'Emma Vasquez', email: 'e.vasquez@rt.com', phone: '+1-555-0104' },
+  //   { id: uuidv4(), customer_code: 'CUST005', name: 'Express Freight Partners', priority: 'Medium', contact_person: 'David Kim', email: 'd.kim@efp.com', phone: '+1-555-0105' },
+  //   { id: uuidv4(), customer_code: 'CUST006', name: 'Harbour Port Authority', priority: 'High', contact_person: 'Linda Mbeki', email: 'l.mbeki@harbour.com', phone: '+1-555-0106' },
+  // ];
   customers.forEach(async c => await db.insert('customers', { ...c, is_active: true }));
   console.log(`  ✓ ${customers.length} customers`);
 
-  // ---- Products (Forklifts) ----
-  const products = [
-    { id: uuidv4(), product_code: 'FL-E2T', name: 'Electric Forklift 2T', description: '2-tonne electric counterbalance forklift, lithium-ion battery, 8hr runtime', category: 'Electric Counterbalance', unit_price: 45000, standard_cost: 32000, lead_time_days: 14 },
-    { id: uuidv4(), product_code: 'FL-D3T', name: 'Diesel Forklift 3T', description: '3-tonne diesel counterbalance forklift, Tier 4 Final engine, ROPS cab', category: 'Diesel Counterbalance', unit_price: 38000, standard_cost: 27500, lead_time_days: 12 },
-    { id: uuidv4(), product_code: 'FL-RT15', name: 'Reach Truck 1.5T', description: '1.5-tonne narrow-aisle electric reach truck, max lift height 10m', category: 'Electric Reach Trucks', unit_price: 52000, standard_cost: 38500, lead_time_days: 18 },
-    { id: uuidv4(), product_code: 'FL-EPJ', name: 'Electric Pallet Jack 2.5T', description: 'Electric walkbehind pallet jack, 2.5-tonne, 6hr runtime', category: 'Pallet Equipment', unit_price: 8500, standard_cost: 5800, lead_time_days: 7 },
-    { id: uuidv4(), product_code: 'FL-RT4T', name: 'Rough Terrain Forklift 4T', description: '4-tonne rough terrain forklift, diesel, pneumatic tyres, outdoor use', category: 'Specialty Forklifts', unit_price: 58000, standard_cost: 43500, lead_time_days: 21 },
-    { id: uuidv4(), product_code: 'FL-VNA', name: 'VNA Turret Truck 1.2T', description: 'Very Narrow Aisle turret truck, laser guided, 1.2T, 12m lift', category: 'Electric Reach Trucks', unit_price: 78000, standard_cost: 56000, lead_time_days: 25 },
-  ];
+  // ---- Products ----
+  const products=[];
+  const productGroups = await cf.run(SELECT.from('CP_PARTIALPROD_INTRO'));
+  for(i=0;i<productGroups.length;i++){
+    products.id=uuidv4();
+    products.product_code= productGroups[i].PRODUCT_ID;
+    products.name= productGroups[i].CUSTOMER_DESC;
+    products.description= 'High';
+    products.category= "James" + i +'23';
+    products.unit_price= 'abc@abc.com';
+    products.standard_cost= 'phone';
+    products.lead_time_days= i;
+  }
+  // const products = [
+  //   { id: uuidv4(), product_code: 'FL-E2T', name: 'Electric Forklift 2T', description: '2-tonne electric counterbalance forklift, lithium-ion battery, 8hr runtime', category: 'Electric Counterbalance', unit_price: 45000, standard_cost: 32000, lead_time_days: 14 },
+  //   { id: uuidv4(), product_code: 'FL-D3T', name: 'Diesel Forklift 3T', description: '3-tonne diesel counterbalance forklift, Tier 4 Final engine, ROPS cab', category: 'Diesel Counterbalance', unit_price: 38000, standard_cost: 27500, lead_time_days: 12 },
+  //   { id: uuidv4(), product_code: 'FL-RT15', name: 'Reach Truck 1.5T', description: '1.5-tonne narrow-aisle electric reach truck, max lift height 10m', category: 'Electric Reach Trucks', unit_price: 52000, standard_cost: 38500, lead_time_days: 18 },
+  //   { id: uuidv4(), product_code: 'FL-EPJ', name: 'Electric Pallet Jack 2.5T', description: 'Electric walkbehind pallet jack, 2.5-tonne, 6hr runtime', category: 'Pallet Equipment', unit_price: 8500, standard_cost: 5800, lead_time_days: 7 },
+  //   { id: uuidv4(), product_code: 'FL-RT4T', name: 'Rough Terrain Forklift 4T', description: '4-tonne rough terrain forklift, diesel, pneumatic tyres, outdoor use', category: 'Specialty Forklifts', unit_price: 58000, standard_cost: 43500, lead_time_days: 21 },
+  //   { id: uuidv4(), product_code: 'FL-VNA', name: 'VNA Turret Truck 1.2T', description: 'Very Narrow Aisle turret truck, laser guided, 1.2T, 12m lift', category: 'Electric Reach Trucks', unit_price: 78000, standard_cost: 56000, lead_time_days: 25 },
+  // ];
   products.forEach(async p => await db.insert('products', { ...p, is_active: true }));
   console.log(`  ✓ ${products.length} products`);
 
@@ -39,14 +62,14 @@ async function seedData() {
   const today = moment();
   const validFrom = today.clone().startOf('isoWeek').format('YYYY-MM-DD');
   const validTo = today.clone().add(6, 'months').format('YYYY-MM-DD');
-
-  const restrictions = [
-    { id: uuidv4(), restriction_code: 'RES-ASSY-A', name: 'Assembly Line A (Electric)', description: 'Main assembly line for electric forklifts and reach trucks', resource_type: 'Assembly', penalty_cost_per_unit: 150, valid_from: validFrom, valid_to: validTo },
-    { id: uuidv4(), restriction_code: 'RES-ASSY-B', name: 'Assembly Line B (Diesel)', description: 'Diesel and rough-terrain forklift assembly', resource_type: 'Assembly', penalty_cost_per_unit: 175, valid_from: validFrom, valid_to: validTo },
-    { id: uuidv4(), restriction_code: 'RES-PAINT', name: 'Paint Shop', description: 'Electrostatic paint booth, handles all models', resource_type: 'Finishing', penalty_cost_per_unit: 200, valid_from: validFrom, valid_to: validTo },
-    { id: uuidv4(), restriction_code: 'RES-TEST', name: 'Final Testing Bay', description: 'Load testing, safety certification, final QC', resource_type: 'Testing', penalty_cost_per_unit: 180, valid_from: validFrom, valid_to: validTo },
-    { id: uuidv4(), restriction_code: 'RES-MAST', name: 'Mast & Lift System', description: 'Mast assembly and hydraulic system installation', resource_type: 'Assembly', penalty_cost_per_unit: 220, valid_from: validFrom, valid_to: validTo },
-  ];
+const restGroups = await cf.run(SELECT.from('V_RSTRREQ_PRODCONSD'));
+  // const restrictions = [
+  //   { id: uuidv4(), restriction_code: 'RES-ASSY-A', name: 'Assembly Line A (Electric)', description: 'Main assembly line for electric forklifts and reach trucks', resource_type: 'Assembly', penalty_cost_per_unit: 150, valid_from: validFrom, valid_to: validTo },
+  //   { id: uuidv4(), restriction_code: 'RES-ASSY-B', name: 'Assembly Line B (Diesel)', description: 'Diesel and rough-terrain forklift assembly', resource_type: 'Assembly', penalty_cost_per_unit: 175, valid_from: validFrom, valid_to: validTo },
+  //   { id: uuidv4(), restriction_code: 'RES-PAINT', name: 'Paint Shop', description: 'Electrostatic paint booth, handles all models', resource_type: 'Finishing', penalty_cost_per_unit: 200, valid_from: validFrom, valid_to: validTo },
+  //   { id: uuidv4(), restriction_code: 'RES-TEST', name: 'Final Testing Bay', description: 'Load testing, safety certification, final QC', resource_type: 'Testing', penalty_cost_per_unit: 180, valid_from: validFrom, valid_to: validTo },
+  //   { id: uuidv4(), restriction_code: 'RES-MAST', name: 'Mast & Lift System', description: 'Mast assembly and hydraulic system installation', resource_type: 'Assembly', penalty_cost_per_unit: 220, valid_from: validFrom, valid_to: validTo },
+  // ];
   restrictions.forEach(async r => await db.insert('restrictions', { ...r, is_active: true }));
   console.log(`  ✓ ${restrictions.length} restrictions`);
 
@@ -96,7 +119,7 @@ async function seedData() {
 
   // ---- Components ----
   const components = [
-    { id: uuidv4(), component_code: 'CMP-MOT-2KW', name: 'AC Drive Motor 2kW', description: '2kW 3-phase AC drive motor for electric forklifts', supplier: 'MotorTech GmbH', unit_cost: 1400, lead_time_days: 10, min_stock: 20 },
+    { id: uuidv4(), component_code: 'CMP-MOT-2KW', name: 'AC Drive Motor 2kW', description: '2kW 3-phase AC drive motor', supplier: 'MotorTech GmbH', unit_cost: 1400, lead_time_days: 10, min_stock: 20 },
     { id: uuidv4(), component_code: 'CMP-BAT-48V', name: 'Li-Ion Battery 48V/450Ah', description: '48V lithium-ion traction battery pack', supplier: 'PowerCell Systems', unit_cost: 4200, lead_time_days: 14, min_stock: 12 },
     { id: uuidv4(), component_code: 'CMP-HYD-SYS', name: 'Hydraulic Lift System', description: 'Complete hydraulic pump, cylinder & valve assembly', supplier: 'HydroTec Industries', unit_cost: 3100, lead_time_days: 12, min_stock: 15 },
     { id: uuidv4(), component_code: 'CMP-TYR-IND', name: 'Industrial Tyre Set (4)', description: 'Pneumatic industrial tyres, 200/50-10, set of 4', supplier: 'TyreCorp International', unit_cost: 950, lead_time_days: 5, min_stock: 60 },
