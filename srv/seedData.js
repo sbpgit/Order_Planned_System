@@ -141,6 +141,15 @@ async function seedData(locationId) {
       product_id: null, penalty_per_day: 0, penalty_flat: flat
     });
   }
+  // Early delivery: benefit subtracted from total fitness (reward for scheduling early)
+  for (const priority of ['High', 'Medium', 'Low']) {
+    const perDay = priority === 'High' ? 500 : priority === 'Medium' ? 250 : 100;
+    const flat   = priority === 'High' ? 100 : priority === 'Medium' ? 50  : 20;
+    penaltyRules.push({
+      id: uuidv4(), rule_type: 'early_delivery', customer_priority: priority,
+      product_id: null, penalty_per_day: perDay, penalty_flat: flat
+    });
+  }
   for (const r of penaltyRules) await db.insert('penalty_rules', { ...r });
   console.log(`  ✓ ${penaltyRules.length} penalty rules`);
 
@@ -192,13 +201,13 @@ async function seedData(locationId) {
   };
   let availCount = 0;
   for (const comp of components) {
-    const cfg = availConfig[comp.component_code] || { base: 200, variance: 50 };
+    const cfg = availConfig[comp.component_code] || { base: 1000, variance: 10 };
     for (let w = 0; w < 14; w++) {
       const weekDate = today.clone().add(w, 'weeks');
       const year = weekDate.isoWeekYear();
       const week = weekDate.isoWeek();
       const variation = Math.floor(Math.random() * cfg.variance);
-      const available_qty = Math.max(200, cfg.base + variation);
+      const available_qty = Math.max(5, cfg.base + variation);
       await db.insert('component_availability', {
         id: uuidv4(), component_id: comp.id, year, week,
         available_qty, reserved_qty: Math.floor(available_qty * 0.05)
@@ -208,55 +217,6 @@ async function seedData(locationId) {
   }
   console.log(`  ✓ ${availCount} component availability records`);
 
-  // ---- Product → Restriction mapping (which assembly lines each product uses) ----
-  let BOMUID = await cf.run(SELECT.from('CP_BOM_UID').columns(r => {
-    r.PRODUCT_ID,
-      r.UNIQUE_ID,
-      r.ASSEMBLY,
-      r.RULE_TYPE,
-      r.ASMB_QTY,
-      r.REF_PRODID
-  }).where({ LOCATION_ID: locationId }));
-  let BOMRest = BOMUID.filter(id => id.RULE_TYPE === 'RT');
-  const productRestrictionMap = {};
-  BOMRest.forEach(item => {
-    const key = item.PRODUCT_ID+"_"+item.UNIQUE_ID;
-    if (!productRestrictionMap[key]) {
-      productRestrictionMap[key] = [];
-    }
-    productRestrictionMap[key].push(item.ASSEMBLY);
-  });
-  // const productRestrictionMap = {
-  //   'FL-E2T': ['RES-ASSY-A', 'RES-PAINT', 'RES-TEST', 'RES-MAST'],
-  //   'FL-D3T': ['RES-ASSY-B', 'RES-PAINT', 'RES-TEST', 'RES-MAST'],
-  //   'FL-RT15': ['RES-ASSY-A', 'RES-PAINT', 'RES-TEST', 'RES-MAST'],
-  //   'FL-EPJ': ['RES-ASSY-A', 'RES-TEST'],
-  //   'FL-RT4T': ['RES-ASSY-B', 'RES-PAINT', 'RES-TEST', 'RES-MAST'],
-  //   'FL-VNA': ['RES-ASSY-A', 'RES-PAINT', 'RES-TEST', 'RES-MAST'],
-  // };
-  // const productComponentMap = {
-  //   'FL-E2T': [['CMP-MOT-2KW', 1], ['CMP-BAT-48V', 1], ['CMP-HYD-SYS', 1], ['CMP-TYR-IND', 1], ['CMP-ECU-CTRL', 1], ['CMP-MAST-STD', 1]],
-  //   'FL-D3T': [['CMP-ENG-D3T', 1], ['CMP-HYD-SYS', 1], ['CMP-TYR-IND', 1], ['CMP-CAB-ROPS', 1], ['CMP-MAST-STD', 1]],
-  //   'FL-RT15': [['CMP-MOT-2KW', 1], ['CMP-BAT-48V', 1], ['CMP-HYD-SYS', 1], ['CMP-TYR-IND', 1], ['CMP-ECU-CTRL', 1], ['CMP-MAST-STD', 1]],
-  //   'FL-EPJ': [['CMP-MOT-2KW', 1], ['CMP-BAT-48V', 1], ['CMP-TYR-IND', 1], ['CMP-ECU-CTRL', 1]],
-  //   'FL-RT4T': [['CMP-ENG-D3T', 1], ['CMP-HYD-SYS', 1], ['CMP-TYR-IND', 1], ['CMP-CAB-ROPS', 1], ['CMP-MAST-STD', 1]],
-  //   'FL-VNA': [['CMP-MOT-2KW', 2], ['CMP-BAT-48V', 1], ['CMP-HYD-SYS', 1], ['CMP-ECU-CTRL', 2], ['CMP-MAST-STD', 1]],
-  // };
-  let BOMComp = BOMUID.filter(id => id.RULE_TYPE === 'PI');
-  const productComponentMap = {};
-  BOMComp.forEach(item => {
-    const key = item.PRODUCT_ID+"_"+item.UNIQUE_ID;
-    if (!productComponentMap[key]) {
-      productComponentMap[key] = [];
-    }
-    productComponentMap[key].push([item.ASSEMBLY, Number(item.ASMB_QTY)]);
-  });
-
-  // Build lookup maps
-  const restrictionByCode = {};
-  restrictionsTotal.forEach(r => { restrictionByCode[r.restriction_code] = r; });
-  const componentByCode = {};
-  components.forEach(c => { componentByCode[c.component_code] = c; });
   const productByCode = {};
   productsTotal.forEach(p => { productByCode[p.product_code] = p; });
 
@@ -277,7 +237,11 @@ async function seedData(locationId) {
           r.CUSTOMER_DESC,
           r.CUSTOMER_GROUP
       })
-      .where`MAT_AVAILDATE > '2025-11-25' and LOCATION_ID = ${locationId}`
+      .where
+      `
+      
+      MAT_AVAILDATE > '2025-11-25' 
+      and LOCATION_ID = ${locationId}`
   );
 
   for (let i = 0; i < salesData.length; i++) {
@@ -313,44 +277,15 @@ async function seedData(locationId) {
       notes: `${quantity}x ${product.name} for ${customer.name}`
     });
   }
+  // Make the first 4 orders overdue (past promise_date, still Open)
+  const overdueDays = [7, 14, 5, 21];
+  for (let i = 0; i < Math.min(4, ordersData.length); i++) {
+    ordersData[i].promise_date = today.clone().subtract(overdueDays[i], 'days').format('YYYY-MM-DD');
+    ordersData[i].requested_date = today.clone().subtract(overdueDays[i] + 7, 'days').format('YYYY-MM-DD');
+  }
+
   for (const o of ordersData) await db.insert('sales_orders', o);
   console.log(`  ✓ ${ordersData.length} sales orders`);
-
-  // ---- Order-Restriction links ----
-  let orCount = 0;
-  for (const order of ordersData) {
-    const product = productsTotal.find(p => p.id === order.product_id);
-    const resCodes = productRestrictionMap[product.product_code+"_"+order.unique_id] || [];
-    for (const code of resCodes) {
-      const restriction = restrictionByCode[code];
-      if (restriction) {
-        await db.insert('order_restrictions', {
-          id: uuidv4(), sales_order_id: order.id,
-          restriction_id: restriction.id, capacity_usage_per_unit: 1
-        });
-        orCount++;
-      }
-    }
-  }
-  console.log(`  ✓ ${orCount} order-restriction links`);
-
-  // ---- Order-Component links ----
-  let ocCount = 0;
-  for (const order of ordersData) {
-    const product = productsTotal.find(p => p.id === order.product_id);
-    const compList = productComponentMap[product.product_code+"_"+order.unique_id] || [];
-    for (const [code, qtyPerUnit] of compList) {
-      const comp = componentByCode[code];
-      if (comp) {
-        await db.insert('order_components', {
-          id: uuidv4(), sales_order_id: order.id,
-          component_id: comp.id, required_qty_per_unit: qtyPerUnit
-        });
-        ocCount++;
-      }
-    }
-  }
-  console.log(`  ✓ ${ocCount} order-component links`);
 
   console.log('\n✅ Sample data seeded successfully!');
   return {

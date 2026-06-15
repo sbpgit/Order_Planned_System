@@ -936,6 +936,37 @@ router.post('/optimize', async (req, res) => {
     const components   = await db.getComponentsWithAvailability(locationId);
     const penaltyRules = await db.findAll('penalty_rules');
     console.log(penaltyRules);
+
+    // ── Build order restrictions & components dynamically from SAP BOM (only for selected orders) ──
+    const cf = await cds.connect.to('db');
+    const BOMUID = await cf.run(SELECT.from('CP_BOM_UID').columns(r => {
+      r.PRODUCT_ID, r.UNIQUE_ID, r.ASSEMBLY, r.RULE_TYPE, r.ASMB_QTY
+    }).where({ LOCATION_ID: locationId }));
+
+    const productRestrictionMap = {};
+    const productComponentMap   = {};
+    BOMUID.filter(b => b.RULE_TYPE === 'RT').forEach(b => {
+      const key = b.PRODUCT_ID + '_' + b.UNIQUE_ID;
+      (productRestrictionMap[key] = productRestrictionMap[key] || []).push(b.ASSEMBLY);
+    });
+    BOMUID.filter(b => b.RULE_TYPE === 'PI').forEach(b => {
+      const key = b.PRODUCT_ID + '_' + b.UNIQUE_ID;
+      (productComponentMap[key] = productComponentMap[key] || []).push([b.ASSEMBLY, Number(b.ASMB_QTY)]);
+    });
+
+    const restrictionByCode = Object.fromEntries(restrictions.map(r => [r.restriction_code, r]));
+    const componentByCode   = Object.fromEntries(components.map(c => [c.component_code, c]));
+
+    for (const order of orders) {
+      const key = order.product_code + '_' + order.unique_id;
+      order.restrictions = (productRestrictionMap[key] || [])
+        .map(code => restrictionByCode[code]).filter(Boolean)
+        .map(r => ({ restriction_id: r.id, restriction_name: r.name, capacity_usage_per_unit: 1 }));
+      order.components = (productComponentMap[key] || [])
+        .map(([code, qty]) => [componentByCode[code], qty]).filter(([c]) => c)
+        .map(([c, qty]) => ({ component_id: c.id, component_name: c.name, required_qty_per_unit: qty }));
+    }
+
     if (orders.length === 0) {
       await db.update('optimization_runs', runId, { status: 'Failed' });
       return res.status(400).json({ error: 'No open orders found' });
@@ -1003,8 +1034,34 @@ router.post('/optimize', async (req, res) => {
 });
 
 async function _runOptimizationAsync(runId, orders, restrictions, components, penaltyRules, optimizer, startTime, signal) {
+  // Persist BOM-derived restrictions/components so the order detail modal can display them
+  for (const order of orders) {
+    if (order.restrictions && order.restrictions.length > 0) {
+      await db.removeWhere('order_restrictions', { sales_order_id: order.id });
+      for (const r of order.restrictions) {
+        await db.insert('order_restrictions', {
+          id: uuidv4(), sales_order_id: order.id,
+          restriction_id: r.restriction_id,
+          capacity_usage_per_unit: r.capacity_usage_per_unit || 1
+        });
+      }
+    }
+    if (order.components && order.components.length > 0) {
+      await db.removeWhere('order_components', { sales_order_id: order.id });
+      for (const c of order.components) {
+        await db.insert('order_components', {
+          id: uuidv4(), sales_order_id: order.id,
+          component_id: c.component_id,
+          required_qty_per_unit: c.required_qty_per_unit || 1
+        });
+      }
+    }
+  }
+
   const genLogBuffer = [];
+  let lastGenFitness = null;
   const onGenerationComplete = async (generation, bestFitness, avgFitness) => {
+    lastGenFitness = bestFitness;
     genLogBuffer.push({
       id: uuidv4(), run_id: runId, generation,
       best_fitness: bestFitness, avg_fitness: avgFitness,
@@ -1021,26 +1078,37 @@ async function _runOptimizationAsync(runId, orders, restrictions, components, pe
   // Flush any remaining buffered generations
   if (genLogBuffer.length > 0) await db.bulkInsert('optimization_gen_log', [...genLogBuffer]);
 
+  // If post-processing (pull-forward) improved fitness, append a final entry so
+  // the convergence chart's last point matches the Total Penalty KPI
+  if (lastGenFitness !== null && result.bestFitness < lastGenFitness) {
+    await db.bulkInsert('optimization_gen_log', [{
+      id: uuidv4(), run_id: runId,
+      generation: result.generationsRun + 1,
+      best_fitness: result.bestFitness,
+      avg_fitness: result.bestFitness,
+      logged_at: new Date().toISOString()
+    }]);
+  }
+
   let onTimeCount = 0, totalDelay = 0, maxDelay = 0;
-  const infeasibleSet = new Set(result.details.infeasibleOrderIds || []);
 
   const resultRows = [];
   for (const order of orders) {
     const optimizedDate = result.bestSolution[order.id];
     const originalDate  = order.promise_date;
     const delayDays     = moment(optimizedDate).diff(moment(originalDate), 'days');
+    const weekDiff      = moment(optimizedDate).startOf('isoWeek').diff(moment(originalDate).startOf('isoWeek'), 'weeks');
     const penaltyCost   = result.details.orderPenalties?.[order.id] || 0;
-    const isInfeasible  = infeasibleSet.has(order.id);
 
-    if (!isInfeasible && delayDays <= 0) onTimeCount++;
-    else if (!isInfeasible) { totalDelay += delayDays; maxDelay = Math.max(maxDelay, delayDays); }
+    if (weekDiff <= 0) onTimeCount++;
+    else { totalDelay += delayDays; maxDelay = Math.max(maxDelay, delayDays); }
 
     resultRows.push({
       id: uuidv4(), run_id: runId, sales_order_id: order.id,
       original_date: originalDate, optimized_date: optimizedDate,
       delay_days: delayDays, penalty_cost: penaltyCost,
-      feasible: (!isInfeasible && delayDays <= 0) ? 1 : 0,
-      status: isInfeasible ? 'Infeasible' : (delayDays <= 0 ? 'On Time' : `Delayed ${delayDays}d`)
+      feasible: weekDiff <= 0 ? 1 : 0,
+      status: weekDiff < 0 ? `Early ${Math.abs(delayDays)}d` : weekDiff === 0 ? 'On Time' : `Delayed ${delayDays}d`
     });
   }
   if (resultRows.length) await db.bulkInsert('optimization_results', resultRows);
@@ -1159,6 +1227,39 @@ router.get('/optimization-runs/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Returns blocking components for an order that cannot be fulfilled in any week
+router.get('/optimization-runs/:runId/structural-infeasibility/:orderId', async (req, res) => {
+  try {
+    const orderComponents = await db.queryAll(`
+      SELECT oc.component_id, oc.required_qty_per_unit, so.quantity,
+             c.name AS component_name, c.component_code
+      FROM   order_components oc
+      JOIN   sales_orders so ON oc.sales_order_id = so.id
+      JOIN   components   c  ON oc.component_id   = c.id
+      WHERE  so.id = ?`, [req.params.orderId]);
+
+    const blocking = [];
+    for (const oc of orderComponents) {
+      const maxRow = await db.queryOne(
+        `SELECT MAX(available_qty) AS max_avail FROM component_availability WHERE component_id = ?`,
+        [oc.component_id]
+      );
+      const needed   = (Number(oc.required_qty_per_unit) || 1) * Number(oc.quantity);
+      const maxAvail = Number(maxRow?.max_avail || 0);
+      if (needed > maxAvail) {
+        blocking.push({
+          component_name: oc.component_name,
+          component_code: oc.component_code,
+          required:       needed,
+          max_available:  maxAvail,
+          shortage:       needed - maxAvail
+        });
+      }
+    }
+    res.json({ blocking });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 router.get('/dashboard', async (req, res) => {
   try {
@@ -1170,7 +1271,7 @@ router.get('/dashboard', async (req, res) => {
       totalOrders, openOrders, confirmedOrders, overdueRow, lastRun,
       capacityStatus, compStatus
     ] = await Promise.all([
-      db.count('products'),
+      db.queryOne(`SELECT COUNT(DISTINCT "PRODUCT_CODE") AS cnt FROM "OPS_PRODUCTS"`),
       db.count('customers'),
       db.count('restrictions', locationId ? { location_id: locationId } : {}),
       db.count('components',   locationId ? { location_id: locationId } : {}),
@@ -1203,7 +1304,7 @@ router.get('/dashboard', async (req, res) => {
     ]);
 
     res.json({
-      total_products: totalProducts, total_customers: totalCustomers,
+      total_products: totalProducts ? Number(totalProducts.cnt) : 0, total_customers: totalCustomers,
       total_restrictions: totalRestrictions, total_components: totalComponents,
       total_orders: totalOrders, open_orders: openOrders,
       confirmed_orders: confirmedOrders,

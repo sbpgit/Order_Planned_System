@@ -741,29 +741,14 @@ async function getOrdersWithDetails(locationId, dateFrom, dateTo) {
     SELECT so.*,
            c.name  AS customer_name,
            c.priority AS customer_priority,
-           p.name  AS product_name
+           p.name  AS product_name,
+           p.product_code AS product_code
     FROM sales_orders so
     LEFT JOIN customers c ON so.customer_id = c.id
     LEFT JOIN products  p ON so.product_id = p.id
     ${where}
     ORDER BY so.promise_date ASC, so.priority ASC, c.priority ASC
   `, params);
-
-  for (const order of orders) {
-    order.restrictions = await queryAll(`
-      SELECT or2.*, r.name AS restriction_name
-      FROM order_restrictions or2
-      JOIN restrictions r ON or2.restriction_id = r.id
-      WHERE or2.sales_order_id = ?
-    `, [order.id]);
-
-    order.components = await queryAll(`
-      SELECT oc.*, comp.name AS component_name
-      FROM order_components oc
-      JOIN components comp ON oc.component_id = comp.id
-      WHERE oc.sales_order_id = ?
-    `, [order.id]);
-  }
 
   return orders;
 }

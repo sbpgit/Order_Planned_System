@@ -18,12 +18,6 @@ function weekToDate(year, week) {
   return moment().isoWeekYear(year).isoWeek(week).startOf('isoWeek');
 }
 
-/**
- * Add N weeks to a date string, return YYYY-MM-DD
- */
-function addWeeks(dateStr, n) {
-  return moment(dateStr).add(n, 'weeks').format('YYYY-MM-DD');
-}
 
 class OrderPlanningOptimizer {
   constructor(config = {}) {
@@ -34,6 +28,7 @@ class OrderPlanningOptimizer {
     this.crossoverRate = config.crossoverRate || 0.8;
     this.elitismRate = config.elitismRate || 0.1;
     this.maxWeeksDelay = config.maxWeeksDelay || 8;
+    this.maxWeeksEarly = config.maxWeeksEarly || 3;
   }
 
   /**
@@ -46,13 +41,22 @@ class OrderPlanningOptimizer {
       return { bestSolution: {}, bestFitness: 0, details: {}, executionTime: 0 };
     }
 
-    // Build week offset candidates for each order (0 = on time, 1..N = weeks delayed)
-    // -N means early (not used here since promise date is the target)
+    // All orders participate in the GA — no structural infeasibility exclusion
     const orderIds = orders.map(o => o.id);
-    const maxOffsets = this.maxWeeksDelay + 1; // 0..maxWeeksDelay
+    const maxOffsets = this.maxWeeksDelay + 1;
+
+    const todayWeekStart = moment().isoWeekday() === 1
+      ? moment().startOf('isoWeek')
+      : moment().add(1, 'week').startOf('isoWeek');
+    const floorOffsets = {};
+    for (const order of orders) {
+      const { year, week } = getWeekInfo(order.promise_date);
+      const promiseWeekStart = weekToDate(year, week);
+      floorOffsets[order.id] = Math.max(-this.maxWeeksEarly, todayWeekStart.diff(promiseWeekStart, 'weeks'));
+    }
 
     // Initialize population
-    let population = this._initializePopulation(orderIds, maxOffsets);
+    let population = this._initializePopulation(orderIds, maxOffsets, floorOffsets);
 
     let bestSolution = null;
     let bestFitness = Infinity;
@@ -78,7 +82,7 @@ class OrderPlanningOptimizer {
         await new Promise(r => setImmediate(r));
         if (!shouldContinue()) break;
         const { fitness, details } = this._evaluateFitness(
-          population[i], orders, restrictions, components, penaltyRules
+          population[i], orders, restrictions, components, penaltyRules, floorOffsets
         );
         evaluated.push({ chromosome: population[i], fitness, details });
       }
@@ -112,7 +116,7 @@ class OrderPlanningOptimizer {
           ? this._crossover(parent1, parent2, orderIds)
           : { ...parent1 };
 
-        child = this._mutate(child, orderIds, maxOffsets);
+        child = this._mutate(child, orderIds, maxOffsets, floorOffsets);
         nextGen.push(child);
       }
 
@@ -120,6 +124,17 @@ class OrderPlanningOptimizer {
     }
 
     const executionTime = Date.now() - startTime;
+
+    // Post-process: pull delayed orders forward where capacity/components allow
+    if (bestSolution) {
+      const pulled = this._greedyPullForward(bestSolution, orders, restrictions, components, floorOffsets);
+      const { fitness: pf, details: pd } = this._evaluateFitness(
+        pulled, orders, restrictions, components, penaltyRules, floorOffsets
+      );
+      bestSolution = pulled;
+      bestDetails  = pd;
+      bestFitness  = pf;
+    }
 
     // Build final result structure
     const result = {
@@ -131,12 +146,13 @@ class OrderPlanningOptimizer {
       details: bestDetails || {}
     };
 
-    // Map order offsets back to actual dates
+    // Every order gets a scheduled date
     for (const order of orders) {
       const offset = bestSolution[order.id] || 0;
+      const effectiveOffset = Math.max(offset, floorOffsets[order.id] || 0);
       const promiseWeek = getWeekInfo(order.promise_date);
       const confirmedDate = weekToDate(promiseWeek.year, promiseWeek.week)
-        .add(offset, 'weeks')
+        .add(effectiveOffset, 'weeks')
         .format('YYYY-MM-DD');
       result.bestSolution[order.id] = confirmedDate;
     }
@@ -148,9 +164,9 @@ class OrderPlanningOptimizer {
    * Initialize random population
    * Each chromosome is a map: { orderId: weekOffset (0..maxWeeksDelay) }
    */
-  _initializePopulation(orderIds, maxOffsets) {
+  _initializePopulation(orderIds, maxOffsets, floorOffsets = {}) {
     const pop = [];
-    // First chromosome: all orders on time (offset=0)
+    // First chromosome: all orders on-time (offset 0 = promise date, zero penalty baseline)
     const onTime = {};
     orderIds.forEach(id => { onTime[id] = 0; });
     pop.push(onTime);
@@ -158,7 +174,7 @@ class OrderPlanningOptimizer {
     for (let i = 1; i < this.populationSize; i++) {
       const chromosome = {};
       orderIds.forEach(id => {
-        // Bias toward 0 (on-time) - 50% chance
+        // GA only explores on-time to delayed (0..maxOffsets); early scheduling is left to pull-forward
         chromosome[id] = Math.random() < 0.5 ? 0 : Math.floor(Math.random() * maxOffsets);
       });
       pop.push(chromosome);
@@ -169,7 +185,7 @@ class OrderPlanningOptimizer {
   /**
    * Evaluate fitness (total penalty cost) for a chromosome
    */
-  _evaluateFitness(chromosome, orders, restrictions, components, penaltyRules) {
+  _evaluateFitness(chromosome, orders, restrictions, components, penaltyRules, floorOffsets = {}) {
     let totalPenalty = 0;
     const orderPenalties = {};
     const weeklyCapacityUsage = {}; // restrictionId -> { "year-week": usage }
@@ -181,24 +197,24 @@ class OrderPlanningOptimizer {
     // For each order, calculate penalty based on offset
     for (const order of orders) {
       const offset = chromosome[order.id] || 0;
+      // Clamp to floor: overdue orders can never be placed in a past week
+      const effectiveOffset = Math.max(offset, floorOffsets[order.id] || 0);
       const promiseWeekInfo = getWeekInfo(order.promise_date);
 
       let orderPenalty = 0;
 
-      if (offset === 0) {
-        // On time - no delay penalty, but could still have capacity violations tracked below
-      } else {
+      if (effectiveOffset < 0) {
+        // Early delivery — subtract reward from total fitness
+        const earlyDays = Math.abs(effectiveOffset) * 7;
+        orderPenalty -= this._calcEarlyReward(order, earlyDays, penaltyMap);
+      } else if (effectiveOffset > 0) {
         // Late delivery penalty
-        const delayDays = offset * 7;
-        const latePenalty = this._calcLatePenalty(order, delayDays, penaltyMap);
-        orderPenalty += latePenalty;
+        const delayDays = effectiveOffset * 7;
+        orderPenalty += this._calcLatePenalty(order, delayDays, penaltyMap);
       }
 
-      // Track capacity usage
-      const targetYear = promiseWeekInfo.year;
-      const targetWeek = promiseWeekInfo.week + offset;
-      // Normalize week overflow
-      const targetDate = weekToDate(targetYear, promiseWeekInfo.week).add(offset, 'weeks');
+      // Track capacity usage at the effective (floored) week
+      const targetDate = weekToDate(promiseWeekInfo.year, promiseWeekInfo.week).add(effectiveOffset, 'weeks');
       const { year: confYear, week: confWeek } = getWeekInfo(targetDate.format('YYYY-MM-DD'));
       const weekKey = `${confYear}-${confWeek}`;
 
@@ -245,7 +261,7 @@ class OrderPlanningOptimizer {
             // Hard constraint: capacity is 0 → massive penalty, mark orders as infeasible
             totalPenalty += Number(overCapacity) * 1e9;
             for (const order of orders) {
-              const placedWeek = this._getPlacedWeekKey(order, chromosome);
+              const placedWeek = this._getPlacedWeekKey(order, chromosome, floorOffsets);
               if (placedWeek !== weekKey) continue;
               if ((order.restrictions || []).some(or => or.restriction_id === restId)) {
                 infeasibleOrderIds.add(order.id);
@@ -278,7 +294,7 @@ class OrderPlanningOptimizer {
             // Hard constraint: no availability → massive penalty, mark orders as infeasible
             totalPenalty += Number(shortage) * 1e9;
             for (const order of orders) {
-              const placedWeek = this._getPlacedWeekKey(order, chromosome);
+              const placedWeek = this._getPlacedWeekKey(order, chromosome, floorOffsets);
               if (placedWeek !== weekKey) continue;
               if ((order.components || []).some(oc => oc.component_id === compId)) {
                 infeasibleOrderIds.add(order.id);
@@ -310,10 +326,11 @@ class OrderPlanningOptimizer {
     };
   }
   
-  _getPlacedWeekKey(order, chromosome) {
+  _getPlacedWeekKey(order, chromosome, floorOffsets = {}) {
     const offset = chromosome[order.id] || 0;
+    const effectiveOffset = Math.max(offset, floorOffsets[order.id] || 0);
     const promiseWeekInfo = getWeekInfo(order.promise_date);
-    const targetDate = weekToDate(promiseWeekInfo.year, promiseWeekInfo.week).add(offset, 'weeks');
+    const targetDate = weekToDate(promiseWeekInfo.year, promiseWeekInfo.week).add(effectiveOffset, 'weeks');
     const { year, week } = getWeekInfo(targetDate.format('YYYY-MM-DD'));
     return `${year}-${week}`;
   }
@@ -337,6 +354,26 @@ class OrderPlanningOptimizer {
     // Default fallback by priority
     const multiplier = priority === 'High' ? 3 : priority === 'Medium' ? 2 : 1;
     return Number(delayDays) * 500 * multiplier;
+  }
+
+  _calcEarlyReward(order, earlyDays, penaltyMap) {
+    const priority  = order.priority || 'Medium';
+    const productId = order.product_id;
+
+    const key1 = `early_delivery:${priority}:${productId}`;
+    const key2 = `early_delivery:${priority}:ALL`;
+    const key3 = `early_delivery:All:${productId}`;
+    const key4 = `early_delivery:All:ALL`;
+
+    const rule = penaltyMap[key1] || penaltyMap[key2] || penaltyMap[key3] || penaltyMap[key4];
+    if (rule) {
+      return (Number(rule.penalty_per_day) * Number(earlyDays)) + Number(rule.penalty_flat);
+    }
+
+    // Default: Medium 250/day + 50 flat, High 500/day + 100 flat, Low 100/day + 20 flat
+    const perDay = priority === 'High' ? 500 : priority === 'Medium' ? 250 : 100;
+    const flat   = priority === 'High' ? 100 : priority === 'Medium' ?  50 :  20;
+    return perDay * earlyDays + flat;
   }
 
   _buildPenaltyMap(penaltyRules) {
@@ -377,15 +414,116 @@ class OrderPlanningOptimizer {
   /**
    * Mutation: randomly change some order offsets
    */
-  _mutate(chromosome, orderIds, maxOffsets) {
+  _mutate(chromosome, orderIds, maxOffsets, floorOffsets = {}) {
     const mutated = { ...chromosome };
     for (const id of orderIds) {
       if (Math.random() < this.mutationRate) {
-        // Bias toward 0 on mutation
+        // GA only mutates into on-time to delayed range; early scheduling is left to pull-forward
         mutated[id] = Math.random() < 0.4 ? 0 : Math.floor(Math.random() * maxOffsets);
       }
     }
     return mutated;
+  }
+
+  /**
+   * After the GA converges, greedily pull every order to the earliest week that
+   * has sufficient capacity AND components available.  Processes most-delayed
+   * orders first so they get first pick of earlier slack weeks.
+   */
+  _greedyPullForward(solution, orders, restrictions, components, floorOffsets) {
+    const getWeekKey = (order, offset) => {
+      const { year, week } = getWeekInfo(order.promise_date);
+      const d = weekToDate(year, week).add(offset, 'weeks');
+      const { year: y, week: w } = getWeekInfo(d.format('YYYY-MM-DD'));
+      return `${y}-${w}`;
+    };
+
+    // Work with effective offsets
+    const current = {};
+    for (const order of orders) {
+      current[order.id] = Math.max(solution[order.id] || 0, floorOffsets[order.id] || 0);
+    }
+
+    // Build cumulative usage maps from current placements
+    const capUsage  = {}; // restId  -> { weekKey: totalUsage }
+    const compUsage = {}; // compId  -> { weekKey: totalUsage }
+    for (const order of orders) {
+      const wk = getWeekKey(order, current[order.id]);
+      for (const or of (order.restrictions || [])) {
+        if (!capUsage[or.restriction_id]) capUsage[or.restriction_id] = {};
+        capUsage[or.restriction_id][wk] = (capUsage[or.restriction_id][wk] || 0) +
+          (or.capacity_usage_per_unit || 1) * order.quantity;
+      }
+      for (const oc of (order.components || [])) {
+        if (!compUsage[oc.component_id]) compUsage[oc.component_id] = {};
+        compUsage[oc.component_id][wk] = (compUsage[oc.component_id][wk] || 0) +
+          (oc.required_qty_per_unit || 1) * order.quantity;
+      }
+    }
+
+    // Most-delayed first; break ties by priority (High → Medium → Low)
+    const priorityRank = { High: 0, Medium: 1, Low: 2 };
+    const sorted = [...orders].sort((a, b) => {
+      const d = (current[b.id] || 0) - (current[a.id] || 0);
+      return d !== 0 ? d : (priorityRank[a.priority] || 1) - (priorityRank[b.priority] || 1);
+    });
+
+    for (const order of sorted) {
+      const curOffset  = current[order.id];
+      const floor      = floorOffsets[order.id] || 0;
+      if (curOffset <= floor) continue; // already at earliest allowed week
+
+      const curWk = getWeekKey(order, curOffset);
+
+      // Try from earliest allowed week (floor, may be negative = early) up to current position
+      for (let tryOffset = floor; tryOffset < curOffset; tryOffset++) {
+        const tryWk = getWeekKey(order, tryOffset);
+        const [tryYear, tryWeek] = tryWk.split('-').map(Number);
+        let ok = true;
+
+        // Check capacity for every restriction this order uses
+        for (const or of (order.restrictions || [])) {
+          const rest = restrictions.find(r => r.id === or.restriction_id);
+          if (!rest) continue;
+          const orderUsage = (or.capacity_usage_per_unit || 1) * order.quantity;
+          const alreadyUsed = (capUsage[or.restriction_id] || {})[tryWk] || 0;
+          const capEntry = (rest.weekly_capacities || []).find(c => c.year === tryYear && c.week === tryWeek);
+          const capacity = Number(capEntry ? capEntry.capacity : 0);
+          if (capacity <= 0 || alreadyUsed + orderUsage > capacity) { ok = false; break; }
+        }
+        if (!ok) continue;
+
+        // Check component availability
+        for (const oc of (order.components || [])) {
+          const comp = components.find(c => c.id === oc.component_id);
+          if (!comp) continue;
+          const orderReq = (oc.required_qty_per_unit || 1) * order.quantity;
+          const alreadyReq = (compUsage[oc.component_id] || {})[tryWk] || 0;
+          const availEntry = (comp.availability || []).find(a => a.year === tryYear && a.week === tryWeek);
+          const available = Number(availEntry ? availEntry.available_qty : 0);
+          if (available <= 0 || alreadyReq + orderReq > available) { ok = false; break; }
+        }
+        if (!ok) continue;
+
+        // Move this order to the earlier week — update usage maps
+        for (const or of (order.restrictions || [])) {
+          const u = (or.capacity_usage_per_unit || 1) * order.quantity;
+          if (!capUsage[or.restriction_id]) capUsage[or.restriction_id] = {};
+          capUsage[or.restriction_id][curWk]  = (capUsage[or.restriction_id][curWk]  || 0) - u;
+          capUsage[or.restriction_id][tryWk]  = (capUsage[or.restriction_id][tryWk]  || 0) + u;
+        }
+        for (const oc of (order.components || [])) {
+          const r = (oc.required_qty_per_unit || 1) * order.quantity;
+          if (!compUsage[oc.component_id]) compUsage[oc.component_id] = {};
+          compUsage[oc.component_id][curWk] = (compUsage[oc.component_id][curWk] || 0) - r;
+          compUsage[oc.component_id][tryWk] = (compUsage[oc.component_id][tryWk] || 0) + r;
+        }
+        current[order.id] = tryOffset;
+        break;
+      }
+    }
+
+    return current;
   }
 }
 
