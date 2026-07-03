@@ -1234,8 +1234,7 @@ router.get('/dashboard', async (req, res) => {
         `SELECT COUNT(*) AS cnt FROM OPS_SALES_ORDERS
          WHERE promise_date < ? AND status IN ('Open','Confirmed')`, [today]),
       db.queryOne(
-        // `SELECT * FROM OPS_OPTIMIZATION_RUNS ORDER BY created_at DESC FETCH FIRST 1 ROWS ONLY`
-      `SELECT * FROM OPS_OPTIMIZATION_RUNS ORDER BY created_at DESC LIMIT 1`
+        `SELECT * FROM OPS_OPTIMIZATION_RUNS ORDER BY run_date DESC LIMIT 1`
       ),
       db.queryAll(`
         SELECT r.name, r.restriction_code,
