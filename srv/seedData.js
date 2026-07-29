@@ -238,9 +238,8 @@ async function seedData(locationId) {
           r.CUSTOMER_GROUP
       })
       .where
-      `
-      
-      MAT_AVAILDATE > '2025-11-25' 
+      `     
+      MAT_AVAILDATE > '2026-03-01' 
       and LOCATION_ID = ${locationId}`
   );
 
