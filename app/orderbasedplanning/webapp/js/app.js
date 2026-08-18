@@ -56,7 +56,16 @@ Pages.seed = async () => {
   if (!_currentLocationId) { toast('Please select a location from the topbar first.', 'error'); return; }
   const topbarSel = document.getElementById('topbar-location-select');
   const locationLabel = topbarSel?.options[topbarSel.selectedIndex]?.text || _currentLocationId;
-  if (!confirm(`This will clear ALL existing data and load data for:\n\n${locationLabel}\n\nContinue?`)) return;
+  showConfirm({
+    title: 'Load Data',
+    message: `This will clear <strong>ALL</strong> existing data and load data for:<br><br><strong>${locationLabel}</strong><br><br>Continue?`,
+    confirmText: 'Load Data',
+    danger: true,
+    onConfirm: () => _doSeed(locationLabel)
+  });
+};
+
+async function _doSeed(locationLabel) {
   const btn = document.getElementById('btn-seed');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Loading...';
@@ -81,7 +90,7 @@ Pages.seed = async () => {
     btn.disabled = false;
     btn.innerHTML = 'Load Data';
   }
-};
+}
 
 async function confirmLocationAndSeed() {
   const sel = document.getElementById('location-select');

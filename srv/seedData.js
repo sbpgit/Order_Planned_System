@@ -276,13 +276,6 @@ async function seedData(locationId) {
       notes: `${quantity}x ${product.name} for ${customer.name}`
     });
   }
-  // Make the first 4 orders overdue (past promise_date, still Open)
-  const overdueDays = [7, 14, 5, 21];
-  for (let i = 0; i < Math.min(4, ordersData.length); i++) {
-    ordersData[i].promise_date = today.clone().subtract(overdueDays[i], 'days').format('YYYY-MM-DD');
-    ordersData[i].requested_date = today.clone().subtract(overdueDays[i] + 7, 'days').format('YYYY-MM-DD');
-  }
-
   for (const o of ordersData) await db.insert('sales_orders', o);
   console.log(`  ✓ ${ordersData.length} sales orders`);
 

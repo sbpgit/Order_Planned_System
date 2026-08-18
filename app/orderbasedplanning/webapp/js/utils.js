@@ -119,6 +119,26 @@ function closeModal(id) {
   document.getElementById(id).classList.remove('open');
 }
 
+// ===== Confirm Modal (replaces native window.confirm) =====
+// Renders through the app's own modal system so destructive actions get a
+// styled dialog instead of the browser's native confirm() popup.
+let _confirmModalCallback = null;
+function showConfirm({ title = 'Confirm', message = '', confirmText = 'Continue', danger = false, onConfirm }) {
+  document.getElementById('modal-confirm-title').textContent = title;
+  document.getElementById('modal-confirm-message').innerHTML = message;
+  const confirmBtn = document.getElementById('modal-confirm-ok');
+  confirmBtn.textContent = confirmText;
+  confirmBtn.className = `btn ${danger ? 'btn-danger' : 'btn-primary'}`;
+  _confirmModalCallback = onConfirm;
+  openModal('modal-confirm');
+}
+function _runConfirmModal() {
+  const cb = _confirmModalCallback;
+  _confirmModalCallback = null;
+  closeModal('modal-confirm');
+  if (cb) cb();
+}
+
 // ===== Formatting =====
 const fmt = {
   currency: v => v != null ? '$' + Number(v).toLocaleString('en-US', {maximumFractionDigits:0}) : '—',

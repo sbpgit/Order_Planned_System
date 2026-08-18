@@ -584,6 +584,23 @@
   </div>
 </div>
 
+<!-- Generic Confirm Modal (replaces native window.confirm) -->
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-confirm-title">Confirm</div>
+      <button class="modal-close" onclick="closeModal('modal-confirm')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="modal-confirm-message" class="text-sm"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-confirm')">Cancel</button>
+      <button id="modal-confirm-ok" class="btn btn-primary" onclick="_runConfirmModal()">Continue</button>
+    </div>
+  </div>
+</div>
+
 <!-- Add Capacity Week Modal -->
 <div id="modal-add-capacity" class="modal-overlay" style="display:none">
   <div class="modal" style="max-width:420px">
