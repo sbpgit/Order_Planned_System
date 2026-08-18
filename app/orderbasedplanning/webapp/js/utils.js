@@ -123,6 +123,11 @@ function closeModal(id) {
 const fmt = {
   currency: v => v != null ? '$' + Number(v).toLocaleString('en-US', {maximumFractionDigits:0}) : '—',
   date: d => d ? new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—',
+  // Server timestamps (run_date, etc.) are stored/transmitted as UTC ISO strings.
+  // Deliberately omit `timeZone` so the browser renders each viewer's own local
+  // time (a user in the US sees US time, a user in India sees IST, etc.) — do
+  // not hardcode a timeZone here.
+  datetime: d => d ? new Date(d).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit', second:'2-digit', hour12:true, timeZoneName:'short' }) : '—',
   week: d => { if (!d) return '—'; const {week, year} = isoWeekYear(new Date(d+'T00:00:00')); return `W${week}/${year}`; },
   pct: v => v != null ? Number(v).toFixed(1) + '%' : '—',
   num: v => v != null ? Number(v).toLocaleString() : '—',

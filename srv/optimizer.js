@@ -28,7 +28,13 @@ class OrderPlanningOptimizer {
     this.crossoverRate = config.crossoverRate || 0.8;
     this.elitismRate = config.elitismRate || 0.1;
     this.maxWeeksDelay = config.maxWeeksDelay || 8;
-    this.maxWeeksEarly = config.maxWeeksEarly || 3;
+    // Early scheduling is opt-in: only when enabled can the greedy pull-forward
+    // step (see _greedyPullForward) place an order before its promise date.
+    // The dropdown offers 1-3 weeks; anything out of range is clamped.
+    this.earlyScheduling = config.earlyScheduling === true;
+    this.maxWeeksEarly = this.earlyScheduling
+      ? Math.min(3, Math.max(1, parseInt(config.earlyWeeks, 10) || 1))
+      : 0;
   }
 
   /**
@@ -125,7 +131,10 @@ class OrderPlanningOptimizer {
 
     const executionTime = Date.now() - startTime;
 
-    // Post-process: pull delayed orders forward where capacity/components allow
+    // Post-process: greedily pull orders forward to the earliest week with spare
+    // capacity/components. With early scheduling off, floorOffsets never go below
+    // 0 (the promise week), so this only closes delay gaps; with it on, orders may
+    // also move up to `maxWeeksEarly` weeks before their promise date.
     if (bestSolution) {
       const pulled = this._greedyPullForward(bestSolution, orders, restrictions, components, floorOffsets);
       const { fitness: pf, details: pd } = this._evaluateFitness(

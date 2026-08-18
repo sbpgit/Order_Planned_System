@@ -1,4 +1,9 @@
 // ===== Optimize =====
+function toggleEarlyWeeks() {
+  const on = document.getElementById('opt-early').checked;
+  document.getElementById('opt-early-weeks-group').style.display = on ? '' : 'none';
+}
+
 Pages.optimize = () => {
   const fromEl = document.getElementById('opt-date-from');
   const toEl   = document.getElementById('opt-date-to');
@@ -111,6 +116,7 @@ async function runOptimization() {
     const _dateFrom = document.getElementById('opt-date-from').value || undefined;
     const _dateTo   = document.getElementById('opt-date-to').value || undefined;
     const _useTime  = document.getElementById('opt-tab-time').classList.contains('active');
+    const _earlyOn  = document.getElementById('opt-early').checked;
 
     const payload = {
       description:    document.getElementById('opt-desc').value,
@@ -119,7 +125,9 @@ async function runOptimization() {
       crossover_rate: parseFloat(document.getElementById('opt-cross').value) || 0.8,
       locationId:         _locId,
       promise_date_from:  _dateFrom,
-      promise_date_to:    _dateTo
+      promise_date_to:    _dateTo,
+      early_scheduling:   _earlyOn,
+      early_weeks:        _earlyOn ? (parseInt(document.getElementById('opt-early-weeks').value) || 2) : 0
     };
 
     if (_useTime) {
@@ -596,6 +604,10 @@ function renderOptimizationResults(result) {
           <span style="font-size:13px;font-weight:600;font-family:var(--mono)">${runParams.crossover_rate != null ? Number(runParams.crossover_rate).toFixed(2) : '—'}</span>
         </div>
         <div style="display:flex;flex-direction:column;align-items:center;min-width:60px">
+          <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Early Sched.</span>
+          <span style="font-size:13px;font-weight:600;font-family:var(--mono)">${runParams.early_scheduling ? `On (${runParams.early_weeks}w)` : 'Off'}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;min-width:60px">
           <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Exec Time</span>
           <span style="font-size:13px;font-weight:600;font-family:var(--mono)">${s.execution_time_ms}ms</span>
         </div>
@@ -955,7 +967,7 @@ async function downloadOptimizationResults(runId, section) {
       const summaryData = [
         ['Run Number',          run.run_number],
         ['Description',         run.description || '—'],
-        ['Run Date',            run.run_date],
+        ['Run Date',            fmt.datetime(run.run_date)],
         ['Status',              run.status],
         ['Total Orders',        run.total_orders || 0],
         ['On-Time Orders',      run.on_time_orders || 0],
@@ -1146,7 +1158,7 @@ async function viewRunDetail(id) {
     document.getElementById('opt-progress').innerHTML = `
       <div style="background:#EBF4FE;border:1px solid #B3D4FC;border-radius:8px;padding:14px;text-align:center">
         <div style="font-size:14px;font-weight:700;color:var(--accent)">Viewing: ${run.run_number}</div>
-        <div class="text-sm text-muted" style="margin-top:4px">${run.description||''} · ${new Date(run.run_date).toLocaleString()}</div>
+        <div class="text-sm text-muted" style="margin-top:4px">${run.description||''} · ${fmt.datetime(run.run_date)}</div>
       </div>`;
     document.getElementById('opt-fitness-card').style.display = 'none';
     document.getElementById('opt-fitness-chart').innerHTML = '';

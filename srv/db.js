@@ -583,10 +583,22 @@ function _remapSql(sql) {
 // ─────────────────────────────────────────────────────────
 // Generic SQL helpers
 // ─────────────────────────────────────────────────────────
+// HANA TIMESTAMP columns are timezone-naive on the wire. Reads go through raw SQL
+// (see queryAll/findAll below), which bypasses CAP's CQN Timestamp→"...Z" converter,
+// so the hdb driver hands back plain strings like "2026-08-18T08:18:43" with no
+// offset. Since every write goes through Date#toISOString() (see insert/update),
+// those digits are always UTC — this regex only matches the full-datetime shape a
+// TIMESTAMP column produces (DATE columns come back as bare "YYYY-MM-DD" and are
+// left untouched), and tags it explicitly as UTC so browsers don't misinterpret an
+// already-UTC value as their own local time.
+const NAIVE_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/;
+
 function normalizeRow(row) {
   const out = {};
  for (const k in row) {
-    out[k.toLowerCase()] = row[k];
+    let v = row[k];
+    if (typeof v === 'string' && NAIVE_TIMESTAMP_RE.test(v)) v += 'Z';
+    out[k.toLowerCase()] = v;
   }
   return out;
 }

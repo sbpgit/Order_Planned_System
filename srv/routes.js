@@ -918,8 +918,14 @@ router.post('/optimize', async (req, res) => {
     crossover_rate  = 0.8,
     locationId,
     promise_date_from,
-    promise_date_to
+    promise_date_to,
+    early_scheduling = false,
+    early_weeks      = 0
   } = req.body;
+
+  // Clamp pull-forward window to 1-3 weeks; force to 0 when the toggle is off
+  const earlyScheduling = early_scheduling === true;
+  const earlyWeeks      = earlyScheduling ? Math.min(3, Math.max(1, parseInt(early_weeks, 10) || 1)) : 0;
 
   const runId     = uuidv4();
   const runNumber = `RUN-${moment().utcOffset('+05:30').format('YYYYMMDD-HHmmss')}`;
@@ -928,7 +934,7 @@ router.post('/optimize', async (req, res) => {
     await db.insert('optimization_runs', {
       id: runId, run_number: runNumber, description, location_id: locationId || null,
       status: 'Running', run_date: new Date(),
-      parameters: JSON.stringify({ population_size, generations, time_limit_hrs: time_limit_hrs || null, mutation_rate, crossover_rate, promise_date_from: promise_date_from || null, promise_date_to: promise_date_to || null })
+      parameters: JSON.stringify({ population_size, generations, time_limit_hrs: time_limit_hrs || null, mutation_rate, crossover_rate, promise_date_from: promise_date_from || null, promise_date_to: promise_date_to || null, early_scheduling: earlyScheduling, early_weeks: earlyWeeks })
     });
 
     const orders       = await db.getOrdersWithDetails(locationId, promise_date_from, promise_date_to);
@@ -1011,7 +1017,9 @@ router.post('/optimize', async (req, res) => {
       generations,
       timeLimitHrs: time_limit_hrs || null,
       mutationRate: mutation_rate,
-      crossoverRate: crossover_rate
+      crossoverRate: crossover_rate,
+      earlyScheduling,
+      earlyWeeks
     });
 
     // Respond immediately — optimization runs in background so proxy timeouts don't kill it

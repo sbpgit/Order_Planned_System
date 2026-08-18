@@ -9,7 +9,7 @@ Pages.results = async () => {
       return `<tr>
         <td class="mono primary">${r.run_number}</td>
         <td class="text-muted">${r.description || '—'}</td>
-        <td class="text-muted">${r.run_date ? new Date(r.run_date).toLocaleString() : '—'}</td>
+        <td class="text-muted">${fmt.datetime(r.run_date)}</td>
         <td class="mono">${r.total_orders || 0}</td>
         <td class="${(r.on_time_percentage||0) >= 80 ? 'text-green' : 'text-yellow'}">${fmt.pct(r.on_time_percentage)}</td>
         <td class="text-red">${fmt.penalty(r.total_penalty_cost)}</td>
