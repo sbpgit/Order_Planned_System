@@ -387,7 +387,7 @@ code { background: var(--bg3); padding: 2px 6px; border-radius: 3px; font-family
 
 .result-grid-6 {
   display: grid;
-  grid-template-columns: repeat(6,1fr);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
   margin-bottom: 24px;
 }

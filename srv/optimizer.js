@@ -18,6 +18,61 @@ function weekToDate(year, week) {
   return moment().isoWeekYear(year).isoWeek(week).startOf('isoWeek');
 }
 
+/**
+ * prepTicker — tracks the real server-side prep progress for a single
+ * POST /optimize request (loading orders/restrictions/components, allocating
+ * them from the SAP BOM, validating capacity & availability, persisting the
+ * BOM-derived allocations) that spans BOTH the POST /optimize request itself
+ * AND the start of the background _runOptimizationAsync task that follows it
+ * — the response comes back with a runId well before the GA actually starts,
+ * so the client keeps polling this until the real optimization engine begins.
+ *
+ * Keyed by a client-supplied token (sent as `prep_token` in the request body)
+ * so the client can poll GET /optimize/prep-status/:token for the actual
+ * stage text instead of faking one with a client-only setInterval.
+ */
+const PREP_STAGES = [
+  'Loading orders, restrictions & components...',
+  'Allocating restrictions...',
+  'Allocating components...',
+  'Validating capacity & availability...',
+  'Persisting order allocations...'
+];
+
+const PREP_DONE = Symbol('prep-done');
+// How long a finished token's DONE marker sticks around before being swept —
+// long enough for the client's ~10s poll to observe it at least once even
+// under a slow connection, short enough not to accumulate across many runs.
+const PREP_DONE_TTL_MS = 60000;
+
+const prepTicker = {
+  _stage: new Map(), // token -> stage index | PREP_DONE
+
+  start(token) {
+    if (token) this._stage.set(token, 0);
+  },
+  advance(token) {
+    if (!token || !this._stage.has(token)) return;
+    const cur = this._stage.get(token);
+    if (cur === PREP_DONE) return;
+    this._stage.set(token, Math.min(cur + 1, PREP_STAGES.length - 1));
+  },
+  // Returns { stage, done }. `done: true` tells the client prep has genuinely
+  // finished (the GA is starting) — as opposed to `stage: null` for an unknown
+  // or not-yet-registered token, which the client should keep waiting on.
+  get(token) {
+    if (!this._stage.has(token)) return { stage: null, done: false };
+    const v = this._stage.get(token);
+    return v === PREP_DONE ? { stage: null, done: true } : { stage: PREP_STAGES[v], done: false };
+  },
+  done(token) {
+    if (!token) return;
+    this._stage.set(token, PREP_DONE);
+    setTimeout(() => {
+      if (this._stage.get(token) === PREP_DONE) this._stage.delete(token);
+    }, PREP_DONE_TTL_MS).unref?.();
+  }
+};
 
 class OrderPlanningOptimizer {
   constructor(config = {}) {
@@ -140,9 +195,13 @@ class OrderPlanningOptimizer {
       const { fitness: pf, details: pd } = this._evaluateFitness(
         pulled, orders, restrictions, components, penaltyRules, floorOffsets
       );
-      bestSolution = pulled;
-      bestDetails  = pd;
-      bestFitness  = pf;
+      // Only adopt the pulled-forward placement if it's at least as good — guards
+      // against the greedy heuristic ever regressing the GA's best-found solution.
+      if (pf <= bestFitness) {
+        bestSolution = pulled;
+        bestDetails  = pd;
+        bestFitness  = pf;
+      }
     }
 
     // Build final result structure
@@ -196,7 +255,14 @@ class OrderPlanningOptimizer {
    */
   _evaluateFitness(chromosome, orders, restrictions, components, penaltyRules, floorOffsets = {}) {
     let totalPenalty = 0;
+    // Early-delivery reward is still netted into `totalPenalty` below so the GA's
+    // fitness search keeps its incentive to pull orders forward. It's tracked
+    // separately here so the *reported* Total Penalty Cost (see `reportedTotalPenalty`
+    // below) reflects only real costs (late + capacity/component violations),
+    // with early delivery shown as its own figure instead of silently offsetting it.
+    let totalEarlyDeliveryReward = 0;
     const orderPenalties = {};
+    const orderEarlyRewards = {};
     const weeklyCapacityUsage = {}; // restrictionId -> { "year-week": usage }
     const weeklyComponentUsage = {}; // componentId -> { "year-week": usage }
 
@@ -213,9 +279,14 @@ class OrderPlanningOptimizer {
       let orderPenalty = 0;
 
       if (effectiveOffset < 0) {
-        // Early delivery — subtract reward from total fitness
+        // Early delivery — subtract reward from total fitness so the GA still
+        // favors pulling orders forward, but track the reward amount separately
+        // so it isn't netted into the reported Total Penalty Cost.
         const earlyDays = Math.abs(effectiveOffset) * 7;
-        orderPenalty -= this._calcEarlyReward(order, earlyDays, penaltyMap);
+        const earlyReward = this._calcEarlyReward(order, earlyDays, penaltyMap);
+        orderPenalty -= earlyReward;
+        orderEarlyRewards[order.id] = earlyReward;
+        totalEarlyDeliveryReward += earlyReward;
       } else if (effectiveOffset > 0) {
         // Late delivery penalty
         const delayDays = effectiveOffset * 7;
@@ -323,14 +394,23 @@ class OrderPlanningOptimizer {
       });
       totalPenalty = Number.MAX_SAFE_INTEGER;
     }
+    // Reported total excludes the early-delivery reward's negative contribution —
+    // it's the sum of only late-delivery + capacity/component violation costs.
+    // (totalPenalty already has -totalEarlyDeliveryReward baked in for GA fitness,
+    // so adding it back here cancels that out.)
+    const reportedTotalPenalty = totalPenalty + totalEarlyDeliveryReward;
+
     return {
       fitness: totalPenalty,
       details: {
         orderPenalties,
+        orderEarlyRewards,
         weeklyCapacityUsage,
         weeklyComponentUsage,
         infeasibleOrderIds: Array.from(infeasibleOrderIds),
-        totalPenalty
+        totalPenalty,
+        totalEarlyDeliveryReward,
+        reportedTotalPenalty
       }
     };
   }
@@ -536,4 +616,4 @@ class OrderPlanningOptimizer {
   }
 }
 
-module.exports = { OrderPlanningOptimizer, getWeekInfo, weekToDate };
+module.exports = { OrderPlanningOptimizer, getWeekInfo, weekToDate, prepTicker, PREP_STAGES };

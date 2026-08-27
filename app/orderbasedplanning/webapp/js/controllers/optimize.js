@@ -97,17 +97,56 @@ function switchOptTab(tab) {
   document.getElementById('opt-panel-time').style.display = tab === 'time' ? '' : 'none';
 }
 
+// Renders the #opt-progress spinner card with a given stage label. Used both
+// for the initial static text and for each real stage reported by the server
+// while POST /optimize is still in flight (see pollPrepStatus below). `stopId`
+// is whatever id the server currently recognizes for aborting this run — the
+// prep_token while POST /optimize hasn't resolved yet (no runId exists), so
+// Stop works immediately instead of only once data prep finishes.
+function _renderOptProgress(stage, stopId) {
+  document.getElementById('opt-progress').innerHTML = `
+    <div style="text-align:center;padding:40px 20px">
+      <div class="spinner" style="width:40px;height:40px;margin:0 auto 16px;border-width:3px"></div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:8px">${stage}</div>
+      <div class="text-muted text-sm">Genetic algorithm is evaluating order schedules</div>
+      ${stopId ? `<button class="btn btn-secondary" style="margin-top:16px;border-color:var(--red);color:var(--red)"
+        onclick="stopOptimization('${stopId}', this)">⏹ Stop Optimization</button>` : ''}
+    </div>`;
+}
+
+// Polls GET /optimize/prep-status/:token every ~10s and updates #opt-progress
+// with the real server-side prep stage, instead of a client-only fake message.
+// Prep spans BOTH the POST /optimize request itself AND the background
+// persistence step that follows it on the server before the GA actually
+// starts — so this keeps polling (independent of whether POST /optimize has
+// resolved) until the server reports `done: true`, and only then does the
+// caller switch away to the "running in background" UI. getIsDone() is a
+// circuit breaker for the error path (POST /optimize rejected outright).
+async function pollPrepStatus(prepToken, getIsDone) {
+  while (!getIsDone()) {
+    await new Promise(r => setTimeout(r, 10000));
+    if (getIsDone()) break;
+    try {
+      const { stage, done } = await _pollGet(`/optimize/prep-status/${prepToken}`, 4000);
+      if (getIsDone()) break;
+      if (done) return;
+      if (stage) _renderOptProgress(stage, prepToken);
+    } catch(_) { /* prep-status polling is best-effort; ignore transient failures */ }
+  }
+}
+
 async function runOptimization() {
   const btn = document.getElementById('btn-run-opt');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Running...';
 
-  document.getElementById('opt-progress').innerHTML = `
-    <div style="text-align:center;padding:40px 20px">
-      <div class="spinner" style="width:40px;height:40px;margin:0 auto 16px;border-width:3px"></div>
-      <div style="font-size:15px;font-weight:600;margin-bottom:8px">Optimization in progress...</div>
-      <div class="text-muted text-sm">Genetic algorithm is evaluating order schedules</div>
-    </div>`;
+  const prepToken = (crypto.randomUUID && crypto.randomUUID())
+    || `prep-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  let prepDone = false;
+
+  _renderOptProgress('Optimization in progress...', prepToken);
+  const prepStatusDone = pollPrepStatus(prepToken, () => prepDone);
+
   document.getElementById('opt-results-section').style.display = 'none';
   document.getElementById('opt-fitness-card').style.display = 'none';
 
@@ -127,7 +166,8 @@ async function runOptimization() {
       promise_date_from:  _dateFrom,
       promise_date_to:    _dateTo,
       early_scheduling:   _earlyOn,
-      early_weeks:        _earlyOn ? (parseInt(document.getElementById('opt-early-weeks').value) || 2) : 0
+      early_weeks:        _earlyOn ? (parseInt(document.getElementById('opt-early-weeks').value) || 2) : 0,
+      prep_token:         prepToken
     };
 
     if (_useTime) {
@@ -138,9 +178,17 @@ async function runOptimization() {
 
     const { runId, runNumber } = await api('POST', '/optimize', payload);
 
+    // POST /optimize resolving only means the request was accepted — the server
+    // is still persisting BOM-derived allocations before the GA actually starts.
+    // Keep showing real prep stages (Stop still targets prepToken, which maps to
+    // the same abort signal as runId) until the server confirms prep is done.
+    await prepStatusDone;
+    prepDone = true;
+
     await pollOptimizationStatus(runId, runNumber, btn);
 
   } catch(e) {
+    prepDone = true;
     document.getElementById('opt-progress').innerHTML = `
       <div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:16px;text-align:center">
         <div style="color:var(--red);font-weight:700">Optimization Failed</div>
@@ -226,6 +274,7 @@ async function pollOptimizationStatus(runId, runNumber, btn) {
           delayed_orders:       run.delayed_orders,
           on_time_percentage:   Number(run.on_time_percentage).toFixed(1),
           total_penalty_cost:   Number(run.total_penalty_cost).toFixed(2),
+          early_delivery_penalty: Number(run.early_delivery_penalty || 0).toFixed(2),
           avg_delay_days:       Number(run.avg_delay_days).toFixed(1),
           max_delay_days:       run.max_delay_days,
           execution_time_ms:    run.execution_time_ms,
@@ -628,6 +677,7 @@ function renderOptimizationResults(result) {
       <div class="metric-card mc-blue"><div class="mc-val" style="color:var(--accent)">${s.on_time_orders||0}/${s.total_orders||0}</div><div class="mc-lbl">Orders On-Time</div></div>
       <div class="metric-card mc-yellow"><div class="mc-val" style="color:var(--yellow)">${Number(s.avg_delay_days||0).toFixed(1)}d</div><div class="mc-lbl">Avg Delay</div><div class="mc-sub">max ${s.max_delay_days||0}d</div></div>
       <div class="metric-card mc-red"><div class="mc-val" style="color:var(--red)">${Number(s.total_penalty_cost||0).toLocaleString()}</div><div class="mc-lbl">Total Penalty</div></div>
+      <div class="metric-card mc-green"><div class="mc-val" style="color:var(--green)">${Number(s.early_delivery_penalty||0).toLocaleString()}</div><div class="mc-lbl">Early Delivery Penalty</div></div>
       <div class="metric-card mc-orange"><div class="mc-val" style="color:${critCaps.length > 0 ? 'var(--red)' : 'var(--green)'}">${critCaps.length}</div><div class="mc-lbl">Cap. Violations</div><div class="mc-sub">${critCaps.length ? Math.round(totalViolationCost).toLocaleString() : 'None'}</div></div>
       <div class="metric-card mc-purple"><div class="mc-val" style="color:${critComps.length > 0 ? 'var(--red)' : 'var(--green)'}">${critComps.length}</div><div class="mc-lbl">Comp. Shortages</div><div class="mc-sub">${critComps.length ? Math.round(totalShortageCost).toLocaleString() : 'None'}</div></div>
     </div>`;
@@ -974,6 +1024,7 @@ async function downloadOptimizationResults(runId, section) {
         ['Delayed Orders',      run.delayed_orders || 0],
         ['On-Time %',           Number(run.on_time_percentage || 0).toFixed(1) + '%'],
         ['Total Penalty Cost',  Number(run.total_penalty_cost || 0).toLocaleString()],
+        ['Early Delivery Penalty', Number(run.early_delivery_penalty || 0).toLocaleString()],
         ['Avg Delay (days)',     Number(run.avg_delay_days || 0).toFixed(1)],
         ['Max Delay (days)',     run.max_delay_days || 0],
         ['Capacity Violations', caps.filter(c => c.is_critical).length],
@@ -1146,6 +1197,7 @@ async function viewRunDetail(id) {
       summary: {
         total_orders: run.total_orders, on_time_orders: run.on_time_orders,
         delayed_orders: run.delayed_orders, total_penalty_cost: run.total_penalty_cost,
+        early_delivery_penalty: run.early_delivery_penalty,
         on_time_percentage: run.on_time_percentage,
         avg_delay_days: run.avg_delay_days ? Number(run.avg_delay_days).toFixed(1) : '0',
         max_delay_days: run.max_delay_days || 0, execution_time_ms: run.execution_time_ms

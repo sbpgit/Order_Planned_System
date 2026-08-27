@@ -5,12 +5,20 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const moment  = require('moment');
 const db      = require('./db');
-const { OrderPlanningOptimizer } = require('./optimizer');
+const { OrderPlanningOptimizer, prepTicker } = require('./optimizer');
 const { seedData }               = require('./seedData');
 const router = express.Router();
 
 // ─── ACTIVE RUNS: in-memory abort signals for running optimizations ──────────
-const activeRuns = new Map(); // runId -> { aborted: false }
+// Keyed by BOTH the runId and the client-supplied prep_token, pointing at the
+// same signal object, so a Stop request fired while data is still being
+// prepared (before the client even has a runId) can still reach it.
+const activeRuns = new Map(); // runId | prep_token -> { aborted: false }
+
+function releaseActiveRun(runId, prepToken) {
+  activeRuns.delete(runId);
+  if (prepToken) activeRuns.delete(prepToken);
+}
 
 // ─── OPTIMIZATION LOCK: block data mutations while an optimization is running ─
 async function isOptimizationRunning() {
@@ -920,7 +928,8 @@ router.post('/optimize', async (req, res) => {
     promise_date_from,
     promise_date_to,
     early_scheduling = false,
-    early_weeks      = 0
+    early_weeks      = 0,
+    prep_token
   } = req.body;
 
   // Clamp pull-forward window to 1-3 weeks; force to 0 when the toggle is off
@@ -930,24 +939,56 @@ router.post('/optimize', async (req, res) => {
   const runId     = uuidv4();
   const runNumber = `RUN-${moment().utcOffset('+05:30').format('YYYYMMDD-HHmmss')}`;
 
+  prepTicker.start(prep_token);
+
+  // Register the abort signal — keyed by both runId and prep_token — BEFORE any
+  // prep work starts, so a Stop request fired while data is still being prepared
+  // (the client only has prep_token at that point, not yet runId) can reach it
+  // immediately instead of only becoming possible once prep finishes.
+  const signal = { aborted: false };
+  activeRuns.set(runId, signal);
+  if (prep_token) activeRuns.set(prep_token, signal);
+
+  // Bail out immediately if the client already asked to stop, and otherwise on
+  // every subsequent check — keeps "Stop" responsive during data prep instead of
+  // only taking effect once the (uninterruptible) GA loop starts.
+  const bailIfAborted = async () => {
+    if (!signal.aborted) return false;
+    // Mirror the zero-order shape _runOptimizationAsync writes on completion so
+    // the results UI renders cleanly instead of showing NaN% for these fields.
+    await db.update('optimization_runs', runId, {
+      status: 'Aborted', total_orders: 0, on_time_orders: 0, delayed_orders: 0,
+      total_penalty_cost: 0, on_time_percentage: 0, avg_delay_days: 0,
+      max_delay_days: 0, execution_time_ms: Date.now() - startTime
+    }).catch(() => {});
+    releaseActiveRun(runId, prep_token);
+    prepTicker.done(prep_token);
+    res.json({ runId, runNumber, status: 'Aborted' });
+    return true;
+  };
+
   try {
     await db.insert('optimization_runs', {
       id: runId, run_number: runNumber, description, location_id: locationId || null,
       status: 'Running', run_date: new Date(),
       parameters: JSON.stringify({ population_size, generations, time_limit_hrs: time_limit_hrs || null, mutation_rate, crossover_rate, promise_date_from: promise_date_from || null, promise_date_to: promise_date_to || null, early_scheduling: earlyScheduling, early_weeks: earlyWeeks })
     });
+    if (await bailIfAborted()) return;
 
     const orders       = await db.getOrdersWithDetails(locationId, promise_date_from, promise_date_to);
     const restrictions = await db.getRestrictionsWithCapacity(locationId);
     const components   = await db.getComponentsWithAvailability(locationId);
     const penaltyRules = await db.findAll('penalty_rules');
     console.log(penaltyRules);
+    prepTicker.advance(prep_token); // → Allocating restrictions...
+    if (await bailIfAborted()) return;
 
     // ── Build order restrictions & components dynamically from SAP BOM (only for selected orders) ──
     const cf = await cds.connect.to('db');
     const BOMUID = await cf.run(SELECT.from('CP_BOM_UID').columns(r => {
       r.PRODUCT_ID, r.UNIQUE_ID, r.ASSEMBLY, r.RULE_TYPE, r.ASMB_QTY
     }).where({ LOCATION_ID: locationId }));
+    if (await bailIfAborted()) return;
 
     const productRestrictionMap = {};
     const productComponentMap   = {};
@@ -963,7 +1004,15 @@ router.post('/optimize', async (req, res) => {
     const restrictionByCode = Object.fromEntries(restrictions.map(r => [r.restriction_code, r]));
     const componentByCode   = Object.fromEntries(components.map(c => [c.component_code, c]));
 
-    for (const order of orders) {
+    prepTicker.advance(prep_token); // → Allocating components...
+    for (let i = 0; i < orders.length; i++) {
+      // Yield every 200 orders so a large order list can't block the event loop
+      // long enough to delay a Stop request from being processed.
+      if (i > 0 && i % 200 === 0) {
+        await new Promise(r => setImmediate(r));
+        if (await bailIfAborted()) return;
+      }
+      const order = orders[i];
       const key = order.product_code + '_' + order.unique_id;
       order.restrictions = (productRestrictionMap[key] || [])
         .map(code => restrictionByCode[code]).filter(Boolean)
@@ -972,19 +1021,27 @@ router.post('/optimize', async (req, res) => {
         .map(([code, qty]) => [componentByCode[code], qty]).filter(([c]) => c)
         .map(([c, qty]) => ({ component_id: c.id, component_name: c.name, required_qty_per_unit: qty }));
     }
+    prepTicker.advance(prep_token); // → Validating capacity & availability...
+    if (await bailIfAborted()) return;
 
     if (orders.length === 0) {
       await db.update('optimization_runs', runId, { status: 'Failed' });
+      releaseActiveRun(runId, prep_token);
+      prepTicker.done(prep_token);
       return res.status(400).json({ error: 'No open orders found' });
     }
 
     if (restrictions.length === 0) {
       await db.update('optimization_runs', runId, { status: 'Failed' });
+      releaseActiveRun(runId, prep_token);
+      prepTicker.done(prep_token);
       return res.status(400).json({ error: 'No restrictions found' });
     }
 
     if (components.length === 0) {
       await db.update('optimization_runs', runId, { status: 'Failed' });
+      releaseActiveRun(runId, prep_token);
+      prepTicker.done(prep_token);
       return res.status(400).json({ error: 'No components found' });
     }
 
@@ -993,6 +1050,8 @@ router.post('/optimize', async (req, res) => {
       const caps = restriction.weekly_capacities || [];
       if (caps.length === 0 || caps.every(c => Number(c.capacity) <= 0)) {
         await db.update('optimization_runs', runId, { status: 'Failed' });
+        releaseActiveRun(runId, prep_token);
+        prepTicker.done(prep_token);
         return res.status(400).json({
           error: `Optimization rejected: Weekly capacity is 0 for all weeks for restriction "${restriction.restriction_name || restriction.restriction_code || restriction.id}". Please set valid capacity values before optimizing.`
         });
@@ -1004,6 +1063,8 @@ router.post('/optimize', async (req, res) => {
       const avails = component.availability || [];
       if (avails.length === 0 || avails.every(a => Number(a.available_qty) <= 0)) {
         await db.update('optimization_runs', runId, { status: 'Failed' });
+        releaseActiveRun(runId, prep_token);
+        prepTicker.done(prep_token);
         return res.status(400).json({
           error: `Optimization rejected: Component availability is 0 for all weeks for component "${component.component_name || component.component_code || component.id}". Please set valid availability values before optimizing.`
         });
@@ -1011,6 +1072,8 @@ router.post('/optimize', async (req, res) => {
     }
 
     await db.runStmt('UPDATE OPS_OPTIMIZATION_RUNS SET total_orders=? WHERE id=?', [orders.length, runId]);
+    prepTicker.advance(prep_token); // → Persisting order allocations...
+    if (await bailIfAborted()) return;
 
     const optimizer = new OrderPlanningOptimizer({
       populationSize: population_size,
@@ -1022,28 +1085,54 @@ router.post('/optimize', async (req, res) => {
       earlyWeeks
     });
 
-    // Respond immediately — optimization runs in background so proxy timeouts don't kill it
-    const signal = { aborted: false };
-    activeRuns.set(runId, signal);
+    // Respond immediately — optimization runs in background so proxy timeouts don't kill it.
+    // Prep isn't actually finished yet at this point: _runOptimizationAsync still has to persist
+    // the BOM-derived allocations before the GA loop starts, so prepTicker stays alive (client
+    // keeps polling /optimize/prep-status/:token) until that function calls prepTicker.done().
     res.json({ runId, runNumber, status: 'Running' });
 
-    _runOptimizationAsync(runId, orders, restrictions, components, penaltyRules, optimizer, startTime, signal)
+    _runOptimizationAsync(runId, orders, restrictions, components, penaltyRules, optimizer, startTime, signal, prep_token)
       .catch(async (e) => {
         console.error('Optimization background error:', e);
         await db.runStmt('UPDATE OPS_OPTIMIZATION_RUNS SET status=? WHERE id=?', ['Failed', runId]).catch(() => {});
+        prepTicker.done(prep_token);
       })
-      .finally(() => activeRuns.delete(runId));
+      .finally(() => releaseActiveRun(runId, prep_token));
 
   } catch (e) {
     console.error('Optimization error:', e);
     await db.runStmt('UPDATE OPS_OPTIMIZATION_RUNS SET status=? WHERE id=?', ['Failed', runId]).catch(() => {});
+    releaseActiveRun(runId, prep_token);
+    prepTicker.done(prep_token);
     if (!res.headersSent) res.status(500).json({ error: e.message });
   }
 });
 
-async function _runOptimizationAsync(runId, orders, restrictions, components, penaltyRules, optimizer, startTime, signal) {
+// Polled by the client from the moment POST /optimize is fired until the GA
+// actually starts running — spans both the request itself and the background
+// persistence step in _runOptimizationAsync that follows it, so the progress
+// UI keeps showing real stage text instead of jumping to "running in
+// background" while the server is still preparing data.
+router.get('/optimize/prep-status/:token', (req, res) => {
+  res.json(prepTicker.get(req.params.token));
+});
+
+async function _runOptimizationAsync(runId, orders, restrictions, components, penaltyRules, optimizer, startTime, signal, prep_token) {
   // Persist BOM-derived restrictions/components so the order detail modal can display them
-  for (const order of orders) {
+  for (let i = 0; i < orders.length; i++) {
+    // Checked every iteration (cheap — just a flag read) so a Stop fired during this
+    // loop takes effect immediately instead of waiting for the whole order list to
+    // finish persisting before the (already-aborted) GA loop would notice.
+    if (signal && signal.aborted) {
+      prepTicker.done(prep_token);
+      await db.update('optimization_runs', runId, {
+        status: 'Aborted', total_orders: 0, on_time_orders: 0, delayed_orders: 0,
+        total_penalty_cost: 0, on_time_percentage: 0, avg_delay_days: 0,
+        max_delay_days: 0, execution_time_ms: Date.now() - startTime
+      }).catch(() => {});
+      return;
+    }
+    const order = orders[i];
     if (order.restrictions && order.restrictions.length > 0) {
       await db.removeWhere('order_restrictions', { sales_order_id: order.id });
       for (const r of order.restrictions) {
@@ -1064,7 +1153,16 @@ async function _runOptimizationAsync(runId, orders, restrictions, components, pe
         });
       }
     }
+    // Yield every 200 orders so a large order list can't block the event loop
+    // long enough to delay a Stop request from being processed — same pattern
+    // as the prep loop in POST /optimize.
+    if (i > 0 && i % 200 === 0) await new Promise(r => setImmediate(r));
   }
+
+  // Prep is genuinely finished now — the GA loop below is what the client's
+  // "running in background" UI actually refers to, so only now do we tell
+  // /optimize/prep-status/:token to report done and let the client switch.
+  prepTicker.done(prep_token);
 
   const genLogBuffer = [];
   let lastGenFitness = null;
@@ -1167,7 +1265,7 @@ async function _runOptimizationAsync(runId, orders, restrictions, components, pe
     status: result.aborted ? 'Aborted' : 'Completed',
     on_time_orders: onTimeCount,
     delayed_orders: orders.length - onTimeCount,
-    total_penalty_cost: result.bestFitness, on_time_percentage: onTimePct,
+    total_penalty_cost: result.details.reportedTotalPenalty ?? result.bestFitness, on_time_percentage: onTimePct,
     avg_delay_days: avgDelay, max_delay_days: maxDelay, execution_time_ms: execTime
   });
 }
@@ -1216,6 +1314,13 @@ router.get('/optimization-runs/:id', async (req, res) => {
       LEFT JOIN products  p  ON so.product_id  = p.id
       WHERE  or2.run_id = ?
       ORDER BY or2.delay_days DESC`, [req.params.id]);
+
+    // Per-order penalty_cost is negative for early-delivered orders (it nets the
+    // early-delivery reward). Total Penalty Cost above excludes that reward, so
+    // surface it here as its own positive figure instead of leaving it hidden.
+    run.early_delivery_penalty = run.order_results
+      .filter(o => Number(o.penalty_cost) < 0)
+      .reduce((sum, o) => sum - Number(o.penalty_cost), 0);
 
     run.capacity_analysis = await db.queryAll(`
       SELECT ca.*, r.name AS restriction_name, r.restriction_code
