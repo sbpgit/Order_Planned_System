@@ -7,14 +7,54 @@
       "target": "/api/$1",
       "destination": "Order_Based_Planning_New",
       "authenticationType": "none",
-      "csrfProtection": false
+      "csrfProtection": true,
+       "scope": {
+        "GET": [
+          "$XSAPPNAME.User"
+        ],
+        "PUT": [
+          "$XSAPPNAME.User"
+        ],
+        "PATCH": [
+          "$XSAPPNAME.User"
+        ],
+        "POST": [
+          "$XSAPPNAME.User"
+        ],
+        "DELETE": [
+          "$XSAPPNAME.User"
+        ],
+        "default": [
+          "$XSAPPNAME.User"
+        ]
+      }
     },
     {
       "source": "^/odata/(.*)$",
       "target": "/odata/$1",
       "destination": "Order_Based_Planning_New",
       "authenticationType": "none",
-      "csrfProtection": false
+      "csrfProtection": true,
+      "scope": {
+        "GET": [
+          "$XSAPPNAME.User"
+        ],
+        "PUT": [
+          "$XSAPPNAME.User"
+        ],
+        "PATCH": [
+          "$XSAPPNAME.User"
+        ],
+        "POST": [
+          "$XSAPPNAME.User"
+        ],
+        "DELETE": [
+          "$XSAPPNAME.User"
+        ],
+        "default": [
+          "$XSAPPNAME.User"
+        ]
+      }
     },
     {
       "source": "^/resources/(.*)$",
