@@ -4,16 +4,8 @@
   "description": "Security profile of order based planning application",
   "scopes": [
     {
-      "name": "uaa.user",
-      "description": "UAA"
-    },
-    {
       "name": "$XSAPPNAME.User",
       "description": "General user access"
-    },
-    {
-      "name": "$XSAPPNAME.read",
-      "description": "Read authorization"
     },
     {
       "name": "$XSAPPNAME.admin",

@@ -15,16 +15,6 @@
       "version": "1.20.4",
       "toolsId": "53cc524a-f844-4eb0-8345-cadc32c71f5b"
     },
-    "dataSources": {
-      "mainService": {
-        "uri": "/odata/v4/orderbasedplanning/",
-        "type": "OData",
-        "settings": {
-          "annotations": [],
-          "odataVersion": "4.01"
-        }
-      }
-    },
     "crossNavigation": {
       "inbounds": {
         "orderbasedplanning-display": {
@@ -74,15 +64,6 @@
         "settings": {
           "bundleName": "obp.orderbasedplanning.i18n.i18n"
         }
-      },
-      "": {
-        "dataSource": "mainService",
-        "preload": true,
-        "settings": {
-          "operationMode": "Server",
-          "autoExpandSelect": true,
-          "earlyRequests": true
-        }
       }
     },
     "resources": {
@@ -126,5 +107,16 @@
       "id": "App",
       "async": true
     }
+  },
+   "sap.cloud": {
+    "public": true,
+    "service": "OrderBasedPlanning"
+  },
+  "sap.platform.cf": {
+    "oAuthScopes": [
+      "$XSAPPNAME.User"
+    ],
+    "ui5VersionNumber": "1.145.0"
   }
 }
+
