@@ -9,6 +9,15 @@ function hideLoading() {
   document.getElementById('loading-overlay').classList.remove('active');
 }
 
+// ===== HTML Escape =====
+// Required for any text that did not originate in this app (e.g. LLM output)
+// before it is placed into innerHTML.
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, ch => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
+}
+
 // ===== ISO Week Helpers =====
 function isoWeek(date) {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));

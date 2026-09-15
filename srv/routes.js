@@ -7,6 +7,7 @@ const moment  = require('moment');
 const db      = require('./db');
 const { OrderPlanningOptimizer, prepTicker } = require('./optimizer');
 const { seedData }               = require('./seedData');
+const { summarizeDelay, resolveModelName } = require('./aiCore');
 const router = express.Router();
 
 // ─── ACTIVE RUNS: in-memory abort signals for running optimizations ──────────
@@ -35,7 +36,8 @@ async function guardDataMutation(req, res, next) {
   if (req.method === 'GET') return next();
   if (req.path === '/optimize') return next();
   if (/^\/optimize\/.+\/stop$/.test(req.path)) return next();
-  // Skip read-only post endpoints (exports, etc.) — none currently exist
+  // Skip read-only post endpoints (exports, AI summaries, etc.) — they mutate nothing
+  if (req.path === '/ai/delay-summary') return next();
   try {
     if (await isOptimizationRunning()) {
       return res.status(423).json({
@@ -1457,6 +1459,138 @@ router.delete('/clear-data', async (req, res) => {
     await db.clearAllData(locationId);
     res.json({ success: true, message: `Data cleared for location: ${locationId}` });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── AI HEALTH / DIAGNOSTIC ───────────────────────────────────────────────────
+// GET so it needs no CSRF token and can be opened straight in the browser.
+// Confirms (a) this build of the service is actually deployed, (b) the
+// destination resolves, (c) AI Core answers with the configured model.
+router.get('/ai/health', async (req, res) => {
+  const cfg = {
+    destination:    process.env.AICORE_DEST           || 'AICoreGenAI',
+    deployment_id:  process.env.AICORE_DEPLOYMENT_ID  || '(not set)',
+    resource_group: process.env.AICORE_RESOURCE_GROUP || 'default',
+    model_env:      process.env.AICORE_MODEL          || '(unset — resolved from deployment)',
+    mode:           process.env.AICORE_MODE           || 'auto',
+    build:          'ai-delay-summary-v2'
+  };
+
+  // Resolving the model exercises /v2/lm and proves the destination + token work
+  // without spending an inference call.
+  try { cfg.model_resolved = await resolveModelName(); }
+  catch (e) { cfg.model_resolved = `lookup failed: ${e.message}`; }
+
+  if (req.query.ping === 'false') return res.json({ ok: true, config: cfg });
+
+  try {
+    const { summary, model } = await summarizeDelay({
+      order_number: 'HEALTHCHECK', original_date: '2026-01-01',
+      optimized_date: '2026-01-08', delay_days: 7,
+      capacity_issues: [{ name: 'Health Probe Line', code: 'PROBE', capacity: 100, required: 140, over_capacity: 40 }],
+      component_issues: []
+    });
+    res.json({ ok: true, config: cfg, model_used: model, sample: summary.slice(0, 200) });
+  } catch (e) {
+    const status = e.statusCode || e.response?.status;
+    res.status(200).json({
+      ok: false, config: cfg,
+      failed_with: status || 'no-status',
+      error: e.message,
+      // AI Core / destination errors carry the useful detail in the response body
+      detail: e.response?.data ? JSON.stringify(e.response.data).slice(0, 600) : undefined
+    });
+  }
+});
+
+// ─── AI DEPLOYMENTS (diagnostic) ──────────────────────────────────────────────
+// Lists what the destination's resource group actually serves, so the correct
+// deployment id / scenario can be read off instead of guessed.
+router.get('/ai/deployments', async (req, res) => {
+  try {
+    const { executeHttpRequest } = require('@sap-cloud-sdk/http-client');
+    const rg = req.query.resourceGroup || process.env.AICORE_RESOURCE_GROUP || 'default';
+    const r = await executeHttpRequest(
+      { destinationName: process.env.AICORE_DEST || 'AICoreGenAI' },
+      { method: 'GET', url: '/v2/lm/deployments',
+        headers: { 'AI-Resource-Group': rg }, timeout: 20000 },
+      { fetchCsrfToken: false }
+    );
+    res.json({
+      resource_group: rg,
+      configured_deployment_id: process.env.AICORE_DEPLOYMENT_ID || '(not set)',
+      deployments: (r.data?.resources || []).map(d => ({
+        id: d.id, status: d.status, scenario_id: d.scenarioId,
+        model: d.details?.resources?.backend_details?.model?.name,
+        // The orchestration deployment is the one whose scenarioId is 'orchestration'
+        use_for_orchestration: d.scenarioId === 'orchestration'
+      }))
+    });
+  } catch (e) {
+    res.status(200).json({
+      ok: false, error: e.message,
+      detail: e.response?.data ? JSON.stringify(e.response.data).slice(0, 600) : undefined
+    });
+  }
+});
+
+// ─── AI DELAY SUMMARY (SAP AI Core via BTP destination) ───────────────────────
+// The client sends the delay facts it already computed for the "Why was this
+// order delayed?" panel; we only add the persisted order/result figures and
+// forward a strictly-bounded prompt to AI Core. Read-only — nothing is stored.
+router.post('/ai/delay-summary', async (req, res) => {
+  const { salesOrderId, runId } = req.body || {};
+  if (!salesOrderId) return res.status(400).json({ error: 'salesOrderId is required' });
+
+  try {
+    const order = await db.queryOne(`
+      SELECT so.order_number, so.quantity, so.priority, so.promise_date,
+             c.name AS customer_name, p.name AS product_name
+      FROM   sales_orders so
+      LEFT JOIN customers c ON so.customer_id = c.id
+      LEFT JOIN products  p ON so.product_id  = p.id
+      WHERE  so.id = ?`, [salesOrderId]);
+    if (!order) return res.status(404).json({ error: 'Sales order not found' });
+
+    let result = null;
+    if (runId) {
+      result = await db.queryOne(
+        `SELECT original_date, optimized_date, delay_days, penalty_cost, status
+         FROM   optimization_results WHERE run_id = ? AND sales_order_id = ?`,
+        [runId, salesOrderId]
+      );
+    }
+
+    const { summary, model } = await summarizeDelay({
+      order_number:  order.order_number,
+      customer_name: order.customer_name,
+      product_name:  order.product_name,
+      quantity:      order.quantity,
+      priority:      order.priority,
+      original_date:   result?.original_date  || order.promise_date,
+      optimized_date:  result?.optimized_date || req.body.optimized_date,
+      delay_days:      result?.delay_days     ?? req.body.delay_days,
+      penalty_cost:    result?.penalty_cost   ?? req.body.penalty_cost,
+      promise_week:      req.body.promise_week,
+      already_overdue:   !!req.body.already_overdue,
+      run_date:          req.body.run_date,
+      capacity_issues:   Array.isArray(req.body.capacity_issues)  ? req.body.capacity_issues.slice(0, 10)  : [],
+      component_issues:  Array.isArray(req.body.component_issues) ? req.body.component_issues.slice(0, 10) : []
+    });
+
+    res.json({ summary, model });
+  } catch (e) {
+    // Surface destination / AI Core failures distinctly so the UI can degrade
+    // gracefully instead of losing the deterministic tables it already rendered.
+    // Report AI Core faults as 502 — a 404 from AI Core must not look like
+    // "this endpoint does not exist" to the browser.
+    const upstream = e.statusCode || e.response?.status;
+    console.error('[ai/delay-summary] upstream', upstream, e.message,
+      e.aiCoreDetail ? JSON.stringify(e.aiCoreDetail).slice(0, 800) : '');
+    res.status(502).json({
+      error: e.message || 'AI summary unavailable',
+      upstream_status: upstream
+    });
+  }
 });
 
 module.exports = router;
