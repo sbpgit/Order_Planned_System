@@ -148,6 +148,14 @@ function _runConfirmModal() {
   if (cb) cb();
 }
 
+// Utilization ratio as a percentage. Zero availability with real demand is not
+// 0% utilization — it is unbounded, so report it as Infinity and let the
+// formatters render it rather than silently showing a healthy-looking figure.
+function utilRatio(required, available) {
+  const r = Number(required || 0), a = Number(available || 0);
+  return a > 0 ? (r / a) * 100 : (r > 0 ? Infinity : 0);
+}
+
 // ===== Formatting =====
 const fmt = {
   currency: v => v != null ? '$' + Number(v).toLocaleString('en-US', {maximumFractionDigits:0}) : '—',
@@ -159,6 +167,12 @@ const fmt = {
   datetime: d => d ? new Date(d).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit', second:'2-digit', hour12:true, timeZoneName:'short' }) : '—',
   week: d => { if (!d) return '—'; const {week, year} = isoWeekYear(new Date(d+'T00:00:00')); return `W${week}/${year}`; },
   pct: v => v != null ? Number(v).toFixed(1) + '%' : '—',
+  // Utilization label — uncapped, so a component needing 5x its stock reads
+  // 500%, not a clamped 200%. Unbounded (zero availability) renders as ∞.
+  utilPct: (v, dp = 0) => v == null ? '—' : Number.isFinite(Number(v)) ? Number(v).toFixed(dp) + '%' : '∞',
+  // Bar width for the same value: tracks are fixed-width, so they still
+  // saturate at 100% even though the label above keeps climbing.
+  utilBar: v => Number.isFinite(Number(v)) ? Math.max(0, Math.min(100, Number(v))) : 100,
   num: v => v != null ? Number(v).toLocaleString() : '—',
   penalty: v => v != null ? Number(v).toLocaleString('en-US', {maximumFractionDigits:0}) : '—',
   priorityBadge: p => `<span class="badge badge-${(p||'').toLowerCase()}">${p||'—'}</span>`,
