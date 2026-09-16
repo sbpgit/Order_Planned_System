@@ -7,7 +7,7 @@ const { executeHttpRequest } = require('@sap-cloud-sdk/http-client');
 // All of these are overridable by env var so the destination / deployment /
 // model can change without a code change (set them in mta.yaml or `cf set-env`).
 const DEST_NAME     = process.env.AICORE_DEST          || 'AICoreGenAI';
-const DEPLOYMENT_ID = process.env.AICORE_DEPLOYMENT_ID || '';
+const DEPLOYMENT_ID = process.env.AICORE_DEPLOYMENT_ID || 'dcb0c0434a682105';
 const RESOURCE_GROUP= process.env.AICORE_RESOURCE_GROUP|| 'default';
 // Leave AICORE_MODEL unset to have the model read off the deployment itself.
 const MODEL_NAME    = process.env.AICORE_MODEL         || '';
@@ -81,6 +81,65 @@ function buildContext(ctx) {
   return L.join('\n');
 }
 
+// ─── SCHEDULE-LEVEL (whole run) INSIGHTS ──────────────────────────────────────
+const SCHEDULE_SYSTEM_PROMPT = `You are a supply-chain planning analyst for an order-based planning system.
+You explain, to a production planner, how to reduce the total penalty cost of one optimization run
+by procuring specific components and expanding specific capacity/restrictions ahead of time.
+
+Rules:
+- Use ONLY the facts in the SCHEDULE CONTEXT. Never invent numbers, weeks, components or restrictions.
+- Be concrete: name the component or restriction, quote the recommended quantity, name the target week.
+- Prioritize the items with the largest penalty cost impact first.
+- Structure the answer as exactly these three sections, using these literal headings:
+  Summary:
+  Procurement priorities:
+  Capacity priorities:
+- "Summary:" is 1-2 short sentences on the overall picture. "Procurement priorities:" and
+  "Capacity priorities:" are each 1-3 short sentences covering the top items only.
+  Total under 180 words. Plain prose, no markdown, no bullet characters.
+- If a list (procurement or capacity) is empty in the context, say so briefly in that section
+  instead of inventing an action.`;
+
+// Renders the aggregated capacity/component recommendations the UI already
+// computed (see buildScheduleRecommendations in optimize.js) into compact text.
+function buildScheduleContext(ctx) {
+  const L = [];
+  L.push(`Optimization run: ${ctx.run_number || '—'}${ctx.description ? ` (${ctx.description})` : ''}`);
+  if (ctx.total_orders != null) {
+    L.push(`Orders: ${ctx.total_orders} total, ${ctx.on_time_orders ?? '—'} on-time` +
+           `${ctx.on_time_percentage != null ? ` (${Number(ctx.on_time_percentage).toFixed(1)}%)` : ''}, ` +
+           `${ctx.delayed_orders ?? '—'} delayed`);
+  }
+  if (ctx.total_penalty_cost != null) L.push(`Total penalty cost: ${Math.round(Number(ctx.total_penalty_cost))}`);
+  if (ctx.avg_delay_days != null) L.push(`Average delay: ${Number(ctx.avg_delay_days).toFixed(1)} days`);
+
+  L.push('');
+  if (Array.isArray(ctx.component_recs) && ctx.component_recs.length) {
+    L.push('Component shortages needing procurement (sorted by penalty cost impact):');
+    for (const c of ctx.component_recs) {
+      L.push(`- ${c.name}${c.code ? ` (${c.code})` : ''}: procure at least ${Math.round(Number(c.recommendedQty))} ` +
+             `additional units, needed by week ${c.targetWeek}, affecting ${c.weeksAffected} week` +
+             `${c.weeksAffected === 1 ? '' : 's'}, penalty cost impact ${Math.round(Number(c.cost))}`);
+    }
+  } else {
+    L.push('No component shortages were found in this run.');
+  }
+
+  L.push('');
+  if (Array.isArray(ctx.capacity_recs) && ctx.capacity_recs.length) {
+    L.push('Capacity/restrictions needing expansion (sorted by penalty cost impact):');
+    for (const c of ctx.capacity_recs) {
+      L.push(`- ${c.name}${c.code ? ` (${c.code})` : ''}: add at least ${Math.round(Number(c.recommendedQty))} ` +
+             `additional capacity, needed by week ${c.targetWeek}, affecting ${c.weeksAffected} week` +
+             `${c.weeksAffected === 1 ? '' : 's'}, penalty cost impact ${Math.round(Number(c.cost))}`);
+    }
+  } else {
+    L.push('No capacity violations were found in this run.');
+  }
+
+  return L.join('\n');
+}
+
 // ─── ORCHESTRATION CALL ───────────────────────────────────────────────────────
 // ─── MODEL NAME RESOLUTION ────────────────────────────────────────────────────
 // The deployment ID fixes the inference URL, but the chat-completions body needs
@@ -121,13 +180,22 @@ async function resolveModelName() {
 }
 
 async function summarizeDelay(ctx) {
+  return completeChat(SYSTEM_PROMPT, buildContext(ctx), 'DELAY CONTEXT');
+}
+
+async function summarizeSchedule(ctx) {
+  return completeChat(SCHEDULE_SYSTEM_PROMPT, buildScheduleContext(ctx), 'SCHEDULE CONTEXT');
+}
+
+// Shared call path for both per-order and whole-schedule prompts: resolves the
+// model, tries the orchestration deployment shape, falls back to the direct
+// chat/completions shape on a 404 (and remembers whichever one works).
+async function completeChat(systemPrompt, context, contextLabel) {
   if (!DEPLOYMENT_ID) {
     const e = new Error('AICORE_DEPLOYMENT_ID is not set — cannot reach the AI Core deployment');
     e.statusCode = 503;
     throw e;
   }
-
-  const context = buildContext(ctx);
 
   // A lookup failure here must not sink the summary — fall back to the env value.
   let modelName = MODEL_NAME;
@@ -149,8 +217,8 @@ async function summarizeDelay(ctx) {
           },
           templating_module_config: {
             template: [
-              { role: 'system', content: SYSTEM_PROMPT },
-              { role: 'user',   content: 'DELAY CONTEXT:\n{{?context}}' }
+              { role: 'system', content: systemPrompt },
+              { role: 'user',   content: `${contextLabel}:\n{{?context}}` }
             ],
             defaults: {}
           }
@@ -174,8 +242,8 @@ async function summarizeDelay(ctx) {
       // Azure OpenAI deployments ignore this; mistralai--*/anthropic--* require it.
       ...(modelName ? { model: modelName } : {}),
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user',   content: `DELAY CONTEXT:\n${context}` }
+        { role: 'system', content: systemPrompt },
+        { role: 'user',   content: `${contextLabel}:\n${context}` }
       ],
       max_tokens: MAX_TOKENS,
       temperature: 0.2
@@ -263,11 +331,21 @@ function isModelError(e) {
          /model_not_found|InvalidModel/i.test(text);
 }
 
+// The SDK wraps lower-level failures in its own ErrorWithCause (e.g.
+// "Failed to build headers." wrapping the real destination/auth error) —
+// walk .cause down to the innermost error so that real reason isn't lost.
+function rootCause(e) {
+  let cur = e;
+  while (cur?.cause) cur = cur.cause;
+  return cur;
+}
+
 // Pull AI Core's own error body onto the Error so it reaches the logs and the UI
 // instead of the bare "Request failed with status code NNN" from axios.
 function decorate(e, mode) {
-  const status = e.response?.status;
-  const body   = e.response?.data || e.aiCoreDetail;
+  const root   = rootCause(e);
+  const status = e.response?.status || root?.response?.status;
+  const body   = e.response?.data || root?.response?.data || e.aiCoreDetail;
   const detail = body
     ? (typeof body === 'string' ? body : JSON.stringify(body))
     : '';
@@ -275,8 +353,9 @@ function decorate(e, mode) {
   e.aiCoreDetail = body;
   e.message = `AI Core ${mode} call failed` +
     (status ? ` (HTTP ${status})` : '') +
-    (detail ? `: ${detail.slice(0, 400)}` : `: ${e.message}`);
+    (detail ? `: ${detail.slice(0, 400)}`
+             : `: ${e.message}${root && root !== e ? ` — caused by: ${root.message}` : ''}`);
   return e;
 }
 
-module.exports = { summarizeDelay, resolveModelName, buildContext, DEST_NAME };
+module.exports = { summarizeDelay, summarizeSchedule, resolveModelName, buildContext, buildScheduleContext, DEST_NAME };

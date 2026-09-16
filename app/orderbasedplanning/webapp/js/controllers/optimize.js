@@ -677,6 +677,136 @@ async function loadAiDelaySummary(salesOrderId, payload) {
   }
 }
 
+// ─── AI INSIGHTS (schedule-level procurement/capacity recommendations) ────────
+// Deterministic pass over the run's capacity/component analysis: for every
+// critical restriction or component, work out how much extra capacity/stock
+// to add and by which week (the earliest week it's short), so this tab is
+// useful even before — or if — the AI Core narrative below it loads.
+function buildScheduleRecommendations(caps, comps) {
+  const weekKey = w => Number(w.year) * 100 + Number(w.week);
+
+  const capByR = {};
+  caps.filter(c => c.is_critical).forEach(c => {
+    const k = c.restriction_id || c.restriction_code;
+    if (!capByR[k]) capByR[k] = { name: c.restriction_name, code: c.restriction_code, weeks: [] };
+    capByR[k].weeks.push(c);
+  });
+  const capacityRecs = Object.values(capByR).map(r => {
+    const sorted = r.weeks.slice().sort((a, b) => weekKey(a) - weekKey(b));
+    const worst  = r.weeks.reduce((m, w) => Number(w.over_capacity || 0) > Number(m.over_capacity || 0) ? w : m, r.weeks[0]);
+    return {
+      name: r.name, code: r.code,
+      weeksAffected:   r.weeks.length,
+      targetWeek:      `W${sorted[0].week}/${sorted[0].year}`,
+      recommendedQty:  Math.ceil(Number(worst.over_capacity || 0)),
+      cost:            r.weeks.reduce((a, w) => a + Number(w.violation_cost || 0), 0)
+    };
+  }).sort((a, b) => b.cost - a.cost);
+
+  const compByC = {};
+  comps.filter(c => c.is_critical).forEach(c => {
+    const k = c.component_id || c.component_code;
+    if (!compByC[k]) compByC[k] = { name: c.component_name, code: c.component_code, weeks: [] };
+    compByC[k].weeks.push(c);
+  });
+  const componentRecs = Object.values(compByC).map(c => {
+    const sorted = c.weeks.slice().sort((a, b) => weekKey(a) - weekKey(b));
+    const worst  = c.weeks.reduce((m, w) => Number(w.shortage || 0) > Number(m.shortage || 0) ? w : m, c.weeks[0]);
+    return {
+      name: c.name, code: c.code,
+      weeksAffected:  c.weeks.length,
+      targetWeek:     `W${sorted[0].week}/${sorted[0].year}`,
+      recommendedQty: Math.ceil(Number(worst.shortage || 0)),
+      cost:           c.weeks.reduce((a, w) => a + Number(w.shortage_cost || 0), 0)
+    };
+  }).sort((a, b) => b.cost - a.cost);
+
+  const totalAddressable = capacityRecs.reduce((a, r) => a + r.cost, 0) + componentRecs.reduce((a, r) => a + r.cost, 0);
+  return { capacityRecs, componentRecs, totalAddressable };
+}
+
+function renderInsightsTab(result, capacityRecs, componentRecs, totalAddressable) {
+  const runId = result.run?.id;
+  const hasAny = capacityRecs.length > 0 || componentRecs.length > 0;
+
+  const recTable = (title, rows, qtyLabel, actionLabel) => rows.length ? `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header"><div class="card-title">${title}</div></div>
+      <div class="card-body" style="padding:0"><div class="table-wrap"><table>
+        <thead><tr><th>${actionLabel}</th><th style="text-align:right">${qtyLabel}</th><th>Needed By</th><th style="text-align:right">Weeks Affected</th><th style="text-align:right">Est. Penalty Reduction</th></tr></thead>
+        <tbody>${rows.map(r => `<tr>
+          <td><div style="font-weight:600;font-size:13px">${r.name}</div><div class="mono text-xs text-muted">${r.code || ''}</div></td>
+          <td class="mono text-accent" style="text-align:right;font-weight:600">+${r.recommendedQty.toLocaleString()}</td>
+          <td class="mono text-yellow">${r.targetWeek}</td>
+          <td class="mono" style="text-align:right">${r.weeksAffected}</td>
+          <td class="mono text-green" style="text-align:right">${fmt.penalty(r.cost)}</td>
+        </tr>`).join('')}</tbody>
+      </table></div></div>
+    </div>` : '';
+
+  const noActionHtml = `<div class="card"><div class="card-body" style="text-align:center;padding:40px">
+    <div style="font-size:16px;font-weight:700;color:var(--green)">No Procurement or Capacity Action Needed</div>
+    <div class="text-muted text-sm" style="margin-top:8px">This run has no critical component shortages or capacity violations to address.</div>
+  </div></div>`;
+
+  const aiPanelHtml = runId ? `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header"><div class="card-title">AI Narrative</div></div>
+      <div class="card-body" id="ai-sched-${runId}">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="spinner" style="width:12px;height:12px"></div>
+          <span class="text-sm text-muted">Generating prioritized recommendations…</span>
+        </div>
+      </div>
+    </div>` : '';
+
+  return `<div id="tab-insights" style="display:none">
+    <div class="result-grid-6" style="margin-bottom:16px">
+      <div class="metric-card mc-red"><div class="mc-val" style="color:var(--red)">${fmt.penalty(totalAddressable)}</div><div class="mc-lbl">Addressable Penalty</div></div>
+      <div class="metric-card mc-purple"><div class="mc-val">${componentRecs.length}</div><div class="mc-lbl">Components to Procure</div></div>
+      <div class="metric-card mc-orange"><div class="mc-val">${capacityRecs.length}</div><div class="mc-lbl">Capacity Lines to Expand</div></div>
+    </div>
+    ${aiPanelHtml}
+    ${hasAny ? recTable('Procurement Plan — Components to Order', componentRecs, 'Recommended Qty', 'Component') : ''}
+    ${hasAny ? recTable('Capacity Plan — Restrictions to Expand', capacityRecs, 'Additional Capacity', 'Restriction') : ''}
+    ${!hasAny ? noActionHtml : ''}
+  </div>`;
+}
+
+// Calls POST /ai/schedule-insights with the deterministic recommendations
+// already rendered above, and fills in a narrative on top of them. Mirrors
+// loadAiDelaySummary: never touches the tables already on screen if this fails.
+async function loadAiScheduleInsights(runId, capacityRecs, componentRecs) {
+  const host = document.getElementById('ai-sched-' + runId);
+  if (!host) return;
+
+  const shell = (bodyHtml, footer = '') => `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:var(--text3)">AI Narrative</div>
+      ${footer}
+    </div>
+    <div style="margin-top:7px">${bodyHtml}</div>`;
+
+  try {
+    const { summary, model } = await api('POST', '/ai/schedule-insights', { runId, capacity_recs: capacityRecs, component_recs: componentRecs });
+
+    const body = summary.split(/\n+/).filter(Boolean).map(line => {
+      const m = line.match(/^\s*(Summary|Procurement priorities|Capacity priorities)\s*:\s*(.*)$/i);
+      return m
+        ? `<div style="margin-bottom:6px;font-size:13px;color:var(--text2);line-height:1.55">
+             <span style="font-weight:700;color:var(--text)">${m[1]}:</span> ${esc(m[2])}
+           </div>`
+        : `<div style="margin-bottom:6px;font-size:13px;color:var(--text2);line-height:1.55">${esc(line)}</div>`;
+    }).join('');
+
+    host.innerHTML = shell(body,
+      `<span class="text-xs text-muted mono" title="Generated by SAP AI Core">${esc(model || '')}</span>`);
+  } catch (e) {
+    host.innerHTML = shell(
+      `<div style="font-size:12px;color:var(--text3)">AI narrative unavailable — ${esc(e.message)}. The recommendation tables below are still accurate.</div>`);
+  }
+}
+
 function renderOptimizationResults(result) {
   window._lastOptResult = result;
   const s = result.summary;
@@ -779,6 +909,7 @@ function renderOptimizationResults(result) {
       <div class="tab" onclick="switchTab('capacity')">Capacity ${critCaps.length ? '<span class="badge badge-critical" style="margin-left:4px">'+critCaps.length+'</span>' : ''}</div>
       <div class="tab" onclick="switchTab('comps')">Components ${critComps.length ? '<span class="badge badge-critical" style="margin-left:4px">'+critComps.length+'</span>' : ''}</div>
       <div class="tab" onclick="switchTab('constraints')">Constraint Summary</div>
+      <div class="tab" onclick="switchTab('insights')">✨ AI Insights</div>
     </div>`;
 
   const ordersTabHtml = `<div id="tab-orders"><div class="card"><div class="card-body" style="padding:0"><div class="table-wrap"><table>
@@ -851,8 +982,13 @@ function renderOptimizationResults(result) {
     :`<div class="card"><div class="card-header"><div class="card-title">All Violations — ${allViol.length} issues · Total ${Math.round(totalCost).toLocaleString()}</div><div class="flex gap-2"><span class="import-chip warn">${critCaps.length} cap</span><span class="import-chip warn">${comps.filter(c=>c.is_critical).length} comp</span><span class="import-chip warn">${orders.filter(o=>o.delay_days>0).length} orders late</span></div></div><div class="card-body">${allViol.map(v=>`<div class="violation-item"><div><div class="vi-title">${v.title}</div><div class="vi-detail">${v.detail}</div></div><div class="vi-cost">${fmt.penalty(v.cost)}</div></div>`).join('')}</div></div>`
   }</div>`;
 
+  const { capacityRecs, componentRecs, totalAddressable } = buildScheduleRecommendations(caps, comps);
+  window._lastScheduleRecs = { capacityRecs, componentRecs };
+  window._aiInsightsLoaded = false;
+  const insightsTabHtml = renderInsightsTab(result, capacityRecs, componentRecs, totalAddressable);
+
   document.getElementById('opt-results-content').innerHTML =
-    runInfoHtml + metricsHtml + downloadHtml + tabsHtml + ordersTabHtml + capTabHtml + compTabHtml + constraintsTabHtml;
+    runInfoHtml + metricsHtml + downloadHtml + tabsHtml + ordersTabHtml + capTabHtml + compTabHtml + constraintsTabHtml + insightsTabHtml;
 }
 
 async function downloadOptimizationResults(runId, section) {
@@ -1142,13 +1278,23 @@ async function downloadOptimizationResults(runId, section) {
 }
 
 function switchTab(tab) {
-  ['orders','capacity','comps','constraints'].forEach(t => {
+  const tabs = ['orders','capacity','comps','constraints','insights'];
+  tabs.forEach(t => {
     const el = document.getElementById(`tab-${t}`);
     if (el) el.style.display = t === tab ? 'block' : 'none';
   });
   document.querySelectorAll('#result-tabs .tab').forEach((t,i) => {
-    t.classList.toggle('active', ['orders','capacity','comps','constraints'][i] === tab);
+    t.classList.toggle('active', tabs[i] === tab);
   });
+
+  // Lazy-load the AI narrative only once, the first time this tab is opened —
+  // avoids spending an AI Core call on runs nobody looks at.
+  if (tab === 'insights' && !window._aiInsightsLoaded) {
+    window._aiInsightsLoaded = true;
+    const runId = window._lastOptResult?.run?.id;
+    const recs  = window._lastScheduleRecs;
+    if (runId && recs) loadAiScheduleInsights(runId, recs.capacityRecs, recs.componentRecs);
+  }
 }
 
 async function showOrderDetail(salesOrderId, optimizedDate) {

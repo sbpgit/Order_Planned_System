@@ -7,7 +7,7 @@ const moment  = require('moment');
 const db      = require('./db');
 const { OrderPlanningOptimizer, prepTicker } = require('./optimizer');
 const { seedData }               = require('./seedData');
-const { summarizeDelay, resolveModelName } = require('./aiCore');
+const { summarizeDelay, summarizeSchedule, resolveModelName } = require('./aiCore');
 const router = express.Router();
 
 // ─── ACTIVE RUNS: in-memory abort signals for running optimizations ──────────
@@ -37,7 +37,7 @@ async function guardDataMutation(req, res, next) {
   if (req.path === '/optimize') return next();
   if (/^\/optimize\/.+\/stop$/.test(req.path)) return next();
   // Skip read-only post endpoints (exports, AI summaries, etc.) — they mutate nothing
-  if (req.path === '/ai/delay-summary') return next();
+  if (req.path === '/ai/delay-summary' || req.path === '/ai/schedule-insights') return next();
   try {
     if (await isOptimizationRunning()) {
       return res.status(423).json({
@@ -1588,6 +1588,47 @@ router.post('/ai/delay-summary', async (req, res) => {
       e.aiCoreDetail ? JSON.stringify(e.aiCoreDetail).slice(0, 800) : '');
     res.status(502).json({
       error: e.message || 'AI summary unavailable',
+      upstream_status: upstream
+    });
+  }
+});
+
+// ─── AI SCHEDULE INSIGHTS (SAP AI Core via BTP destination) ──────────────────
+// The client sends the aggregated capacity/component procurement recommendations
+// it already computed from the run's capacity_analysis / component_analysis (see
+// buildScheduleRecommendations in optimize.js); we only add the persisted run
+// figures and forward a strictly-bounded prompt to AI Core. Read-only.
+router.post('/ai/schedule-insights', async (req, res) => {
+  const { runId } = req.body || {};
+  if (!runId) return res.status(400).json({ error: 'runId is required' });
+
+  try {
+    const run = await db.findOne('optimization_runs', { id: runId });
+    if (!run) return res.status(404).json({ error: 'Optimization run not found' });
+
+    const { summary, model } = await summarizeSchedule({
+      run_number:         run.run_number,
+      description:        run.description,
+      total_orders:       run.total_orders,
+      on_time_orders:     run.on_time_orders,
+      delayed_orders:     run.delayed_orders,
+      on_time_percentage: run.on_time_percentage,
+      total_penalty_cost: run.total_penalty_cost,
+      avg_delay_days:     run.avg_delay_days,
+      capacity_recs:  Array.isArray(req.body.capacity_recs)  ? req.body.capacity_recs.slice(0, 12)  : [],
+      component_recs: Array.isArray(req.body.component_recs) ? req.body.component_recs.slice(0, 12) : []
+    });
+
+    res.json({ summary, model });
+  } catch (e) {
+    // Surface destination / AI Core failures distinctly so the UI can degrade
+    // gracefully instead of losing the deterministic recommendation tables it
+    // already rendered.
+    const upstream = e.statusCode || e.response?.status;
+    console.error('[ai/schedule-insights] upstream', upstream, e.message,
+      e.aiCoreDetail ? JSON.stringify(e.aiCoreDetail).slice(0, 800) : '');
+    res.status(502).json({
+      error: e.message || 'AI insights unavailable',
       upstream_status: upstream
     });
   }
