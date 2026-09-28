@@ -926,16 +926,26 @@ function renderOptimizationResults(result) {
     }).join('')}</tbody>
   </table></div></div></div></div>`;
 
+  // "W42, 43, 46" — the year is only spelled out when the weeks span more than one.
+  const criticalWeeks = weeks => {
+    const crit = weeks.filter(w=>w.is_critical).sort((a,b)=>(a.year*100+ +a.week)-(b.year*100+ +b.week));
+    const multiYear = new Set(crit.map(w=>w.year)).size>1;
+    return { count: crit.length, label: crit.length ? 'W'+crit.map(w=>multiYear?`${w.week}/${w.year}`:w.week).join(', ') : '' };
+  };
+
   const capByR = {};
   caps.forEach(c => { const k=c.restriction_id||c.restriction_code; if(!capByR[k]) capByR[k]={name:c.restriction_name,code:c.restriction_code,weeks:[]}; capByR[k].weeks.push(c); });
   const avgUtils = Object.values(capByR).map(r => {
     const avg = r.weeks.reduce((a,w)=>a+Number(w.utilization_pct||0),0)/(r.weeks.length||1);
-    return {name:r.name,code:r.code,avg,violations:r.weeks.filter(w=>w.is_critical).length};
+    const over = criticalWeeks(r.weeks);
+    return {name:r.name,code:r.code,avg,violations:over.count,overWeeks:over.label};
   }).sort((a,b)=>b.avg-a.avg);
 
   const capBarHtml = avgUtils.length ? `<div class="card" style="margin-bottom:16px"><div class="card-header"><div class="card-title">Average Capacity Utilization by Restriction</div></div><div class="card-body"><div class="bar-chart">${
-    avgUtils.map(r=>{const p=Math.min(100,r.avg);const col=p>=100?'var(--red)':p>=80?'var(--orange)':p>=60?'var(--yellow)':'var(--green)';return `<div class="bar-row"><div class="bar-label" title="${r.name}">${r.name}</div><div class="bar-track"><div class="bar-fill" style="width:${p}%;background:${col}">${p>15?`<span>${p.toFixed(0)}%</span>`:''}</div></div><div class="bar-val">${p.toFixed(1)}%${r.violations>0?' (!)':''}</div></div>`;}).join('')
-  }</div><div class="flex gap-3" style="margin-top:10px;flex-wrap:wrap"><span style="font-size:11px;color:var(--green)">■ &lt;60% OK</span><span style="font-size:11px;color:var(--yellow)">■ 60–80% Moderate</span><span style="font-size:11px;color:var(--orange)">■ 80–100% High</span><span style="font-size:11px;color:var(--red)">■ &gt;100% Violation</span></div></div></div>` : '';
+    // Bar length is the average across weeks, but a single over-capacity week can
+    // hide under a low average — colour any restriction with such a week red.
+    avgUtils.map(r=>{const p=Math.min(100,r.avg);const col=(p>=100||r.violations>0)?'var(--red)':p>=80?'var(--orange)':p>=60?'var(--yellow)':'var(--green)';const tip=r.violations>0?`Over capacity in ${r.violations>1?'weeks':'week'} ${r.overWeeks}`:'Within capacity in every week';return `<div class="bar-row" title="${r.name}: ${p.toFixed(1)}% average utilization. ${tip}"><div class="bar-label">${r.name}</div><div class="bar-track"><div class="bar-fill" style="width:${p}%;background:${col}">${p>15?`<span>${p.toFixed(0)}%</span>`:''}</div></div><div class="bar-val">${p.toFixed(1)}%${r.violations>0?` <span style="color:var(--red)">⚠ ${r.violations}w</span>`:''}</div></div>`;}).join('')
+  }</div><div class="flex gap-3" style="margin-top:10px;flex-wrap:wrap"><span style="font-size:11px;color:var(--green)">■ &lt;60% OK</span><span style="font-size:11px;color:var(--yellow)">■ 60–80% Moderate</span><span style="font-size:11px;color:var(--orange)">■ 80–100% High</span><span style="font-size:11px;color:var(--red)">■ &gt;100% or any week over capacity</span></div></div></div>` : '';
 
   const heatGrids = Object.values(capByR).map(r => {
     const cells = r.weeks.sort((a,b)=>a.year*100+a.week-(b.year*100+b.week)).map(w=>{
@@ -959,11 +969,14 @@ function renderOptimizationResults(result) {
     const tr=c.weeks.reduce((a,w)=>a+Number(w.required||0),0);
     const ta=c.weeks.reduce((a,w)=>a+Number(w.available||0),0);
     const p=utilRatio(tr,ta);
-    return {name:c.name,code:c.code,pct:p,shortages:c.weeks.filter(w=>w.is_critical).length};
+    const short=criticalWeeks(c.weeks);
+    return {name:c.name,code:c.code,pct:p,shortages:short.count,shortWeeks:short.label};
   }).sort((a,b)=>a.pct===b.pct?0:b.pct>a.pct?1:-1); // subtraction would be NaN for two ∞ rows
 
   const compBarHtml = compBars.length ? `<div class="card" style="margin-bottom:16px"><div class="card-header"><div class="card-title">Component Demand vs Availability (Total Across All Weeks)</div></div><div class="card-body"><div class="bar-chart">${
-    compBars.map(c=>{const p=fmt.utilBar(c.pct);const col=c.pct>=100?'var(--red)':c.pct>=80?'var(--orange)':c.pct>=60?'var(--yellow)':'var(--green)';return `<div class="bar-row"><div class="bar-label" title="${c.name}">${c.name}</div><div class="bar-track"><div class="bar-fill" style="width:${p}%;background:${col}">${p>15?`<span>${fmt.utilPct(c.pct)}</span>`:''}</div></div><div class="bar-val">${fmt.utilPct(c.pct)}${c.shortages>0?' (!)':''}</div></div>`;}).join('')
+    // Bar length is demand vs availability summed over all weeks, but a single short
+    // week can hide under a low total — colour any component with a short week red.
+    compBars.map(c=>{const p=fmt.utilBar(c.pct);const col=(c.pct>=100||c.shortages>0)?'var(--red)':c.pct>=80?'var(--orange)':c.pct>=60?'var(--yellow)':'var(--green)';const tip=c.shortages>0?`Short in ${c.shortages>1?'weeks':'week'} ${c.shortWeeks}`:'Enough availability in every week';return `<div class="bar-row" title="${c.name}: ${fmt.utilPct(c.pct)} of total availability used. ${tip}"><div class="bar-label">${c.name}</div><div class="bar-track"><div class="bar-fill" style="width:${p}%;background:${col}">${p>15?`<span>${fmt.utilPct(c.pct)}</span>`:''}</div></div><div class="bar-val">${fmt.utilPct(c.pct)}${c.shortages>0?` <span style="color:var(--red)">⚠ ${c.shortages}w</span>`:''}</div></div>`;}).join('')
   }</div><div class="text-xs text-muted" style="margin-top:8px">% = total required / total available across all planned weeks</div></div></div>` : '';
 
   const compTabHtml = `<div id="tab-comps" style="display:none">${comps.length===0?'<div class="card"><div class="card-body text-muted text-sm">No component data</div></div>':''}${compBarHtml}<div class="card"><div class="card-header"><div class="card-title">Weekly Component Status</div></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>Component</th><th>Week</th><th>Available</th><th>Required</th><th>Utilization</th><th>Shortage</th><th>Shortage Cost</th><th>Status</th></tr></thead><tbody>${
